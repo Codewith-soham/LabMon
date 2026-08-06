@@ -21,4 +21,4 @@ const labSchema = new mongoose.Schema({
 { timestamps: true }
 )
 
-export const Lab = mongoose.model("lab", labSchema)
+export const Lab = mongoose.model("Lab", labSchema)

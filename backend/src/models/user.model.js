@@ -1,7 +1,7 @@
 import mongoose from "mongoose"
 import validator from "validator"
 
-const User = new mongoose.Schema({
+const userSchema = new mongoose.Schema({
     name: {
         type: String,
         required: true
@@ -34,3 +34,5 @@ const User = new mongoose.Schema({
 },
 {timestamps: true}
 )
+
+export const User = mongoose.model("User", userSchema)

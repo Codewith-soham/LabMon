@@ -8,13 +8,13 @@ const pcSchema = new mongoose.Schema({
     },
 
     department: {
-        type: mongoose.Types.ObjectId,
+        type: mongoose.Schema.Types.ObjectId,
         ref: "Dept",
         required: [true, "Department is required"],
     },
 
     lab: {
-        type: mongoose.Types.ObjectId,
+        type: mongoose.Schema.Types.ObjectId,
         ref: "Lab",
         required: true
     },

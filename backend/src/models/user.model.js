@@ -21,6 +21,12 @@ const userSchema = new mongoose.Schema({
         },
     },
 
+    department: {
+        type: mongoose.Schema.Types.ObjectID,
+        ref:"Dept",
+        default: null
+    },
+
     password: {
         type: String,
         required: [true, "Password is required"]

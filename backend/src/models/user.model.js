@@ -1,5 +1,6 @@
 import mongoose from "mongoose"
 import validator from "validator"
+import bcrypt from "bcrypt"
 
 const userSchema = new mongoose.Schema({
     name: {
@@ -40,5 +41,20 @@ const userSchema = new mongoose.Schema({
 },
 {timestamps: true}
 )
+
+//pre-save hooks
+userSchema.pre("save", async function(){
+    //if password is modified
+    if(!this.isModified("password")){
+        return
+    }
+    //hash the password
+    const saltRounds = 10
+    this.password = await bcrypt.hash(this.password, saltRounds)
+})
+
+userSchema.method.comparePassword = async function(password){
+    return bcrypt.compare(password, this.password)
+}
 
 export const User = mongoose.model("User", userSchema)

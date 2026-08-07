@@ -1,6 +1,7 @@
 import mongoose from "mongoose"
 import validator from "validator"
 import bcrypt from "bcrypt"
+import Roles from 'Role'
 
 const userSchema = new mongoose.Schema({
     name: {
@@ -53,6 +54,7 @@ userSchema.pre("save", async function(){
     this.password = await bcrypt.hash(this.password, saltRounds)
 })
 
+//to compare the incoming password
 userSchema.method.comparePassword = async function(password){
     return bcrypt.compare(password, this.password)
 }

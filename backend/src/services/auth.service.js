@@ -27,7 +27,7 @@ const registerUser = async({name, email, password, role, department}) => {
     return user
 }
 
-const loginUser = async({email, password, role}) => {
+const loginUser = async({email, password}) => {
 
     //find user by email
     const user = await User.findOne({email})
@@ -42,12 +42,7 @@ const loginUser = async({email, password, role}) => {
     if(!isPasswordValid){
         throw new ApiError(401, "Invalid email or password")
     }
-
-    //verify the account actually belongs to the role being logged in as
-    if(user.role !== role){
-        throw new ApiError(403, "Account not registered under selected role")
-    }
-
+    
     //issue tokens
     const accessToken = generateAccessToken(user)
     const refreshToken = generateRefreshToken(user)

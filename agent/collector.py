@@ -16,7 +16,7 @@ except ImportError:
     winreg = None
 
 BACKEND_URL = os.environ.get("LABMON_BACKEND_URL", "http://localhost:8000")
-SYNC_ENDPOINT = f"{BACKEND_URL.rstrip('/')}/api/pc/sync"
+SYNC_ENDPOINT = f"{BACKEND_URL.rstrip('/')}/api/v1/pc/sync"
 
 UNINSTALL_KEYS = [
     (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall") if winreg else None,

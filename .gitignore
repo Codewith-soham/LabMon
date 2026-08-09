@@ -1,2 +1,47 @@
+# --- Environment / secrets ---
+.env
+.env.*
+!.env.example
+
+# --- Node (backend) ---
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.npm/
+.eslintcache
+coverage/
+dist/
+build/
+
+# --- Python (agent) ---
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+
+# --- Logs ---
+logs/
+*.log
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+
+# --- Editor ---
+.idea/
+.vscode/
+
+# --- Misc ---
+*.pid
+*.pid.lock
+tmp/
+temp/
+uploads/
+*.tgz
+
+# --- Project docs (internal, not for repo) ---
 CLAUDE.md
-agent/venv/

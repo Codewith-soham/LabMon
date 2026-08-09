@@ -17,12 +17,14 @@ app.use(
 
 app.use(express.json({limit: "10mb"}))
 app.use(express.urlencoded({extended: true, limit: "10mb"}))
-app.use(express.static)
 app.use(cookieParser())
 app.use(morgan("dev"))
 
 import authRouter from "../src/routes/auth.route.js"
+import { errorHandler } from "./middlewares/error.middleware.js"
 
 app.use("/api/v1/auth", authRouter)
+
+app.use(errorHandler)
 
 export {app}

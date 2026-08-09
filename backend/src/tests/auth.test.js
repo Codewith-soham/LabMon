@@ -11,9 +11,9 @@ import mongoose from "mongoose"
 
 dotenv.config()
 
-const { app } = await import("../src/app.js")
-const { User } = await import("../src/models/user.model.js")
-const { ROLES } = await import("../src/config/constants.js")
+const { app } = await import("../app.js")
+const { User } = await import("../models/user.model.js")
+const { ROLES } = await import("../config/constants.js")
 
 let server
 let baseUrl

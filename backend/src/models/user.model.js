@@ -24,7 +24,7 @@ const userSchema = new mongoose.Schema({
     },
 
     department: {
-        type: mongoose.Schema.Types.ObjectID,
+        type: mongoose.Schema.Types.ObjectId,
         ref:"Dept",
         default: null
     },

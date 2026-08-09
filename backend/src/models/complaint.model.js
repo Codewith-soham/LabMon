@@ -45,7 +45,7 @@ const complaintSchema = new mongoose.Schema({
 
     status: {
         type: String,
-        enum: Obejct.values(COMPLAINT_STATUS),
+        enum: Object.values(COMPLAINT_STATUS),
         default: "Open",
     },
 

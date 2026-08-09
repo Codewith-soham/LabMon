@@ -42,7 +42,7 @@ const loginUser = async({email, password}) => {
     if(!isPasswordValid){
         throw new ApiError(401, "Invalid email or password")
     }
-    
+
     //issue tokens
     const accessToken = generateAccessToken(user)
     const refreshToken = generateRefreshToken(user)

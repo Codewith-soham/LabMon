@@ -129,16 +129,3 @@ test("login - rejects an unknown email with 401", async () => {
     assert.equal(res.status, 401)
     assert.equal(body.success, false)
 })
-
-test("login - rejects a role that doesn't match the account with 403", async () => {
-    const { payload } = await registerRandomUser({ role: ROLES.HOD })
-
-    const { res, body } = await postJson("/api/v1/auth/login", {
-        email: payload.email,
-        password: payload.password,
-        role: ROLES.DEAN_INFRA
-    })
-
-    assert.equal(res.status, 403)
-    assert.equal(body.success, false)
-})

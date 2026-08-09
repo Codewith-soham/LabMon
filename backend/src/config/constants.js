@@ -12,5 +12,4 @@ export const COMPLAINT_STATUS = {
     ESCALATED_HOD: "Escalated_HOD",
     ESCALATED_DEAN: "Escalated_Dean",
     RESOLVED: "Resolved"
-
 }

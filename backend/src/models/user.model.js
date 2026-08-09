@@ -1,7 +1,7 @@
 import mongoose from "mongoose"
 import validator from "validator"
 import bcrypt from "bcrypt"
-import Roles from 'Role'
+import { ROLES } from "../config/constants.js"
 
 const userSchema = new mongoose.Schema({
     name: {
@@ -36,7 +36,7 @@ const userSchema = new mongoose.Schema({
 
     role: {
         type: String,
-        enum: ["labIncharge" , "hod", "deanInfra", "admin"],
+        enum: Object.values(ROLES),
         required: true
     }
 },

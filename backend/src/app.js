@@ -2,6 +2,7 @@ import express from "express"
 import cors from "cors"
 import morgan from "morgan"
 import helmet from "helmet"
+import cookieParser from "cookie-parser"
 
 const app = express()
 
@@ -17,6 +18,11 @@ app.use(
 app.use(express.json({limit: "10mb"}))
 app.use(express.urlencoded({extended: true, limit: "10mb"}))
 app.use(express.static)
+app.use(cookieParser())
 app.use(morgan("dev"))
+
+import authRouter from "../src/routes/auth.route.js"
+
+app.use("/api/v1/auth", authRouter)
 
 export {app}

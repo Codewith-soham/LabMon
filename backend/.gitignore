@@ -11,5 +11,14 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .DS_Store
+Thumbs.db
 .idea/
 .vscode/
+*.pid
+*.pid.lock
+.npm/
+.eslintcache
+tmp/
+temp/
+uploads/
+*.tgz

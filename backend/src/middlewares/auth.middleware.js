@@ -8,7 +8,7 @@ const auth = (req, res, next) => {
         throw new ApiError(401, "Authentication required")
     }
 
-    const token = authHeader.split(" ")[1]
+    const token = authHeader.split(" ")[1]//bearer[0] ueufeboeh[1] splits the whitespace
 
     try{
         const decoded = jwt.verify(

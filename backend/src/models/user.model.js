@@ -1,7 +1,7 @@
 import mongoose from "mongoose"
 import validator from "validator"
 import bcrypt from "bcrypt"
-import { ROLES } from "../config/constants.js"
+import { ROLES, OTP_PURPOSE } from "../config/constants.js"
 
 const userSchema = new mongoose.Schema({
     name: {
@@ -41,7 +41,28 @@ const userSchema = new mongoose.Schema({
     },
 
     refreshToken: {
-        type: String 
+        type: String
+    },
+
+    isEmailVerified: {
+        type: Boolean,
+        default: false
+    },
+
+    otp: {
+        type: String,
+        select: false
+    },
+
+    otpExpiry: {
+        type: Date,
+        select: false
+    },
+
+    otpPurpose: {
+        type: String,
+        enum: Object.values(OTP_PURPOSE),
+        select: false
     }
 },
 {timestamps: true}

@@ -28,4 +28,16 @@ const syncPcConfig = async (payload) => {
   return pc
 }
 
-export { syncPcConfig }
+const getPcHealthCard = async(pcId , scope) => {
+  const pc = await Pc.findOne({_id: pcId, ...scope})
+
+  if(!pc){
+    throw new ApiError(404, "Pc not found")
+  }
+
+  return pc
+}
+
+export { syncPcConfig,
+    getPcHealthCard
+}

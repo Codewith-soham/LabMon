@@ -13,3 +13,10 @@ export const COMPLAINT_STATUS = {
     ESCALATED_DEAN: "Escalated_Dean",
     RESOLVED: "Resolved"
 }
+
+export const OTP_PURPOSE = {
+    EMAIL_VERIFICATION: "emailVerification",
+    LOGIN: "login"
+}
+
+export const OTP_EXPIRY_MINUTES = 10

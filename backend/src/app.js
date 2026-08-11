@@ -22,10 +22,12 @@ app.use(morgan("dev"))
 
 import authRouter from "../src/routes/auth.route.js"
 import pcRouter from "../src/routes/pc.route.js"
+import complaintRouter from "../src/routes/complaint.route.js"
 import { errorHandler } from "./middlewares/error.middleware.js"
 
 app.use("/api/v1/auth", authRouter)
 app.use("/api/v1/pc", pcRouter)
+app.use("/api/v1/complaints", complaintRouter)
 
 app.use(errorHandler)
 

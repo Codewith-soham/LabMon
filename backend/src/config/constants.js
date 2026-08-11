@@ -14,6 +14,17 @@ export const COMPLAINT_STATUS = {
     RESOLVED: "Resolved"
 }
 
+//lookup table
+export const NEXT_LEVEL = {
+    [ROLES.LAB_INCHARGE]: ROLES.HOD,
+    [ROLES.HOD]: ROLES.DEAN_INFRA
+}
+
+export const STATUS_FOR_LEVEL = {
+    [ROLES.HOD]: COMPLAINT_STATUS.ESCALATED_HOD,
+    [ROLES.DEAN_INFRA]: COMPLAINT_STATUS.ESCALATED_DEAN
+}
+
 export const OTP_PURPOSE = {
     EMAIL_VERIFICATION: "emailVerification",
     LOGIN: "login"

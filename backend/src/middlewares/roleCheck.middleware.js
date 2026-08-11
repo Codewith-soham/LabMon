@@ -1,9 +1,9 @@
-import { ApiError } from "../utils/ApiError"
+import { ApiError } from "../utils/ApiError.js"
 
 const roleCheck = (...allowedRoles) => {
-    return(res,req,next) => {
+    return (req, res, next) => {
         if(!allowedRoles.includes(req.user.role)){
-            throw new ApiError(401, "You do not have permission to perform this action")
+            throw new ApiError(403, "You do not have permission to perform this action")
         }
         next()
     }

@@ -27,7 +27,7 @@ import { errorHandler } from "./middlewares/error.middleware.js"
 
 app.use("/api/v1/auth", authRouter)
 app.use("/api/v1/pc", pcRouter)
-app.use("/api/v1/complaints", complaintRouter)
+app.use("api/v1/complaint", complaintRouter)
 
 app.use(errorHandler)
 

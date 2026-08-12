@@ -69,6 +69,9 @@ const complaintSchema = new mongoose.Schema({
         at:{
             type:Date,
             default: Date.now
+        },
+        note: {
+            type: String
         }
     }],
 },{ timestamps: true}

@@ -79,4 +79,38 @@ const escalateComplaint = async(complaintId, user) => {
     return complaint
 }
 
-export { createComplaint, escalateComplaint }
+const resolveComplaint = async(complaintId, user, remarks) => {
+    const complaint = await Complaint.findById(complaintId)
+
+    if(!complaint){
+        throw new ApiError(404, "Complaint not found")
+    }
+
+    if(complaint.status === COMPLAINT_STATUS.RESOLVED){
+        throw new ApiError(400, "Complaint is already resolved")
+    }
+
+    if(user.role !== ROLES.ADMIN && String(complaint.department) !== String(user.department)){
+        throw new ApiError(403, "You are not authorized to resolve complaints outside your department")
+    }
+
+    if(user.role !== complaint.currentLevel){
+        throw new ApiError(403, "Only the current level's incharge can resolve this complaint")
+    }
+
+    complaint.status = COMPLAINT_STATUS.RESOLVED
+
+    complaint.history.push({
+        level: complaint.currentLevel,
+        action: "resolved",
+        by: user.id,
+        at: new Date(),
+        note: remarks
+    })
+
+    await complaint.save()
+
+    return complaint
+}
+
+export { createComplaint, escalateComplaint, resolveComplaint }

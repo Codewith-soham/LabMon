@@ -2,7 +2,13 @@ import mongoose from "mongoose";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { ApiError } from "../utils/ApiError.js";
-import { createComplaint, escalateComplaint as escalateComplaintService, resolveComplaint as resolveComplaintService } from "../services/complaint.service.js";
+import {
+    createComplaint,
+    escalateComplaint as escalateComplaintService,
+    resolveComplaint as resolveComplaintService,
+    trackComplaint as trackComplaintService,
+    getComplaints
+} from "../services/complaint.service.js";
 
 const raiseComplaint = asyncHandler(async(req,res) => {
     const complaint = await createComplaint(req.body)
@@ -26,4 +32,16 @@ const resolveComplaint = asyncHandler(async(req,res) => {
     return res.status(200).json(new ApiResponse(200, complaint, "Complaint resolved successfully"))
 })
 
-export { raiseComplaint, escalateComplaint, resolveComplaint }
+const track = asyncHandler(async(req,res) => {
+    const complaint = await trackComplaintService(req.params.token)
+
+    return res.status(200).json(new ApiResponse(200, complaint, "Complaint status fetched"))
+})
+
+const list = asyncHandler(async(req,res) => {
+    const complaints = await getComplaints(req.scope)
+
+    return res.status(200).json(new ApiResponse(200, complaints, "Complaints fetched"))
+})
+
+export { raiseComplaint, escalateComplaint, resolveComplaint, track, list }

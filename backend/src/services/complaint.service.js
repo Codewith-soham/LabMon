@@ -113,4 +113,22 @@ const resolveComplaint = async(complaintId, user, remarks) => {
     return complaint
 }
 
-export { createComplaint, escalateComplaint, resolveComplaint }
+//complaint raiser can track the complaint by token
+const trackComplaint = async(token) => {
+    const complaint = await Complaint.findOne({token})
+        .select("token status currentLevel description createdAt") //fields which you want back
+
+    if(!complaint){
+        throw new ApiError(404, "Invalid tracking token")
+    }
+
+    return complaint
+}
+
+const getComplaints = async({...scope}) => {
+    const complaints = await Complaint.find({...scope}).sort({createdAt: -1}) //will get complaints in descending order
+
+    return complaints
+}
+
+export { createComplaint, escalateComplaint, resolveComplaint, trackComplaint, getComplaints }

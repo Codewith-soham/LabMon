@@ -1,14 +1,6 @@
-import mongoose from "mongoose";
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-import { ApiError } from "../utils/ApiError.js";
-import {
-    createComplaint,
-    escalateComplaint as escalateComplaintService,
-    resolveComplaint as resolveComplaintService,
-    trackComplaint as trackComplaintService,
-    getComplaints
-} from "../services/complaint.service.js";
+import { createComplaint, escalateComplaint as escalateComplaintService, trackComplaint, getComplaints} from "../services/complaint.service.js";
 
 const raiseComplaint = asyncHandler(async(req,res) => {
     const complaint = await createComplaint(req.body)
@@ -17,31 +9,28 @@ const raiseComplaint = asyncHandler(async(req,res) => {
 })
 
 const escalateComplaint = asyncHandler(async(req,res) => {
-    if(!mongoose.Types.ObjectId.isValid(req.params.id)){
-        throw new ApiError(400, "Invalid complaint id")
-    }
-
     const complaint = await escalateComplaintService(req.params.id, req.user)
 
     return res.status(200).json(new ApiResponse(200, complaint, "Complaint escalated successfully"))
 })
 
 const resolveComplaint = asyncHandler(async(req,res) => {
-    const complaint = await resolveComplaintService(req.params.id, req.user, req.body.remarks)
+    const conflict = await resolveComplaint(req.params.id, req.user)
 
-    return res.status(200).json(new ApiResponse(200, complaint, "Complaint resolved successfully"))
+    return res.status(200).json(new ApiResponse(200, complaint, "Complaint", "complaint resolved"))
+
 })
 
 const track = asyncHandler(async(req,res) => {
-    const complaint = await trackComplaintService(req.params.token)
+    const complaint = await trackComplaint(req.params.token)
 
     return res.status(200).json(new ApiResponse(200, complaint, "Complaint status fetched"))
 })
 
 const list = asyncHandler(async(req,res) => {
-    const complaints = await getComplaints(req.scope)
+    const complaintList = await getComplaints(req.scope)
 
-    return res.status(200).json(new ApiResponse(200, complaints, "Complaints fetched"))
+    return res.status(200).json(new ApiResponse(200, complaintList, "Complaints fetched"))
 })
 
 export { raiseComplaint, escalateComplaint, resolveComplaint, track, list }

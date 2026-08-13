@@ -125,8 +125,13 @@ const trackComplaint = async(token) => {
     return complaint
 }
 
+//will get complaints according to their scope of department (if IT -> will recieve IT complaints)
 const getComplaints = async({...scope}) => {
-    const complaints = await Complaint.find({...scope }).sort({createdAt: -1}) //will get complaint in descending order
+    const complaints = await Complaint.findOne({...scope }).sort({createdAt: -1}) //will get complaint in descending order
+
+    if(!complaints){
+        throw new ApiError(404, "Complaints not found")
+    }
 
     return complaints
 }

@@ -126,11 +126,7 @@ const trackComplaint = async(token) => {
 }
 
 const getComplaints = async({...scope}) => {
-    const complaints = await Complaint.findOne({...scope }).sort({createdAt: -1}) //will get complaint in descending order
-
-    if(!complaints){
-        throw new ApiError(404, "Complaints not found")
-    }
+    const complaints = await Complaint.find({...scope }).sort({createdAt: -1}) //will get complaint in descending order
 
     return complaints
 }

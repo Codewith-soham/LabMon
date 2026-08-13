@@ -1,6 +1,6 @@
 import { asyncHandler } from "../utils/asyncHandler.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
-import { createComplaint, escalateComplaint as escalateComplaintService, trackComplaint, getComplaints} from "../services/complaint.service.js";
+import { createComplaint, escalateComplaint as escalateComplaintService, resolveComplaint as resolveComplaintService, trackComplaint, getComplaints} from "../services/complaint.service.js";
 
 const raiseComplaint = asyncHandler(async(req,res) => {
     const complaint = await createComplaint(req.body)
@@ -15,10 +15,9 @@ const escalateComplaint = asyncHandler(async(req,res) => {
 })
 
 const resolveComplaint = asyncHandler(async(req,res) => {
-    const conflict = await resolveComplaint(req.params.id, req.user)
+    const complaint = await resolveComplaintService(req.params.id, req.user, req.body.remarks)
 
-    return res.status(200).json(new ApiResponse(200, complaint, "Complaint", "complaint resolved"))
-
+    return res.status(200).json(new ApiResponse(200, complaint, "Complaint resolved successfully"))
 })
 
 const track = asyncHandler(async(req,res) => {

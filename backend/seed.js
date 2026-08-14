@@ -1,4 +1,4 @@
-// seed.js
+// seed.js is to fill temporay data in database (basically sedding data to database)
 // One-time script to insert test Department, Lab, and PC documents for local testing.
 // Run with: node seed.js
 // Place this file in your backend/ folder (same level as server.js), adjust import paths if needed.

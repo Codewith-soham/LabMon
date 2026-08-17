@@ -1,4 +1,5 @@
 import bcrypt from "bcrypt"
+import jwt from "jsonwebtoken"
 import {User} from "../models/user.model.js"
 import {ApiError} from "../utils/ApiError.js"
 import {generateAccessToken, generateRefreshToken} from "../utils/tokenGeneration.js"
@@ -151,9 +152,63 @@ const verifyLoginOtp = async({email, otp}) => {
     return {user, accessToken, refreshToken}
 }
 
+const refreshAccessToken = async(candidateRefreshToken) => {
+
+    if(!candidateRefreshToken){
+        throw new ApiError(401, "Refresh token missing")
+    }
+
+    let decoded
+    try{
+        decoded = jwt.verify(candidateRefreshToken, process.env.JWT_REFRESH_TOKEN)
+    }catch(error){
+        throw new ApiError(401, "Invalid or expired refresh token")
+    }
+
+    const user = await User.findById(decoded.userId)
+
+    if(!user || !user.refreshToken){
+        throw new ApiError(401, "Invalid refresh token")
+    }
+
+    const isRefreshTokenValid = await bcrypt.compare(candidateRefreshToken, user.refreshToken)
+
+    if(!isRefreshTokenValid){
+        throw new ApiError(401, "Invalid refresh token")
+    }
+
+    //rotate: issue a new access token and a new refresh token so a leaked-but-unused
+    //old refresh token can no longer be replayed once this one is redeemed
+    const accessToken = generateAccessToken(user)
+    const refreshToken = generateRefreshToken(user)
+
+    user.refreshToken = await bcrypt.hash(refreshToken, 10)
+    await user.save({validateBeforeSave: false})
+
+    return {accessToken, refreshToken}
+}
+
+const logoutUser = async(userId) => {
+
+    if(!userId){
+        throw new ApiError(401, "Not authenticated")
+    }
+
+    const user = await User.findById(userId)
+
+    if(!user){
+        throw new ApiError(401, "Not authenticated")
+    }
+
+    user.refreshToken = undefined
+    await user.save({validateBeforeSave: false})
+}
+
 export {
     registerUser,
     verifyEmailOtp,
     loginUser,
-    verifyLoginOtp
+    verifyLoginOtp,
+    refreshAccessToken,
+    logoutUser
 }

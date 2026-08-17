@@ -26,7 +26,22 @@ const generateRefreshToken = (user) => {
     )
 }
 
+//parses "15m" / "7d" / "30s" / "1h" style durations (matches jsonwebtoken's expiresIn format) into milliseconds
+const parseExpiryToMs = (expiry) => {
+    const match = /^(\d+)(s|m|h|d)$/.exec(expiry)
+
+    if(!match){
+        throw new Error(`Unrecognized expiry format: ${expiry}`)
+    }
+
+    const value = Number(match[1])
+    const unitMs = { s: 1000, m: 60 * 1000, h: 60 * 60 * 1000, d: 24 * 60 * 60 * 1000 }
+
+    return value * unitMs[match[2]]
+}
+
 export {
     generateAccessToken,
-    generateRefreshToken
+    generateRefreshToken,
+    parseExpiryToMs
 }

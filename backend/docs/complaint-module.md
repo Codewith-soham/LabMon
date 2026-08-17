@@ -18,17 +18,24 @@ router.patch("/:id/escalate", auth, roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD), es
 router.patch("/:id/resolve",  auth, roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD, ROLES.DEAN_INFRA), resolveComplaint)
 ```
 
-Mounted (via `app.js`) at `api/v1/complaint` — note the **missing leading slash** in
-`app.js`'s `app.use("api/v1/complaint", complaintRouter)`, which is a real bug; see
-[`known-issues.md`](./known-issues.md) for the effect.
+Mounted (via `app.js`) at `/api/v1/complaint`.
 
-- `raiseComplaint` is deliberately public — anyone (a student, a lab visitor) can file a
-  complaint without an account, per the product goal of "public, login-free complaint
-  submission tracked by a unique token."
+Also registered but omitted from the snippet above: `router.get("/track/:token", track)`
+(public tracking lookup) and `router.get("/", auth, deptScope, list)` (role/department-
+scoped listing).
+
+- `raiseComplaint` and `track` are deliberately public — anyone (a student, a lab
+  visitor) can file a complaint without an account and check on it later via the token,
+  per the product goal of "public, login-free complaint submission tracked by a unique
+  token."
 - `escalate`/`resolve` both require `auth` + `roleCheck`. `roleCheck` only checks the
   *role* is one of the allowed set — the actual "is this the right person for *this*
   complaint" check (current level match, department match) happens inside the service
   (see below), not in middleware.
+- `list` requires `auth` + `deptScope`, which populates `req.scope` for the service to
+  filter by (see [`middlewares.md`](./middlewares.md#deptscope)) — this is the one
+  complaint route that does use the shared scoping middleware rather than an inline
+  check.
 
 ## Controller (`src/controllers/complaint.controller.js`)
 
@@ -47,18 +54,20 @@ const escalateComplaint = asyncHandler(async (req, res) => {
 })
 
 const resolveComplaint = asyncHandler(async (req, res) => {
+    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+        throw new ApiError(400, "Invalid complaint id")
+    }
     const complaint = await resolveComplaintService(req.params.id, req.user, req.body.remarks)
     return res.status(200).json(new ApiResponse(200, complaint, "Complaint resolved successfully"))
 })
 ```
 
-Note the asymmetry: `escalateComplaint` validates `req.params.id` is a well-formed
-ObjectId **before** calling the service (giving a clean `400` on a malformed id), but
-`resolveComplaint` does not — a malformed id passed to `resolve` will cause
-`Complaint.findById` to throw a Mongoose `CastError` inside the service, which isn't an
-`ApiError`, so it falls through to `errorHandler`'s generic `500` rather than a `400`.
-This is the same class of gap as the PC module's `getPcHealthCard` (see
-[`known-issues.md`](./known-issues.md)).
+Both `escalateComplaint` and `resolveComplaint` validate `req.params.id` is a well-formed
+ObjectId **before** calling the service, giving a clean `400` on a malformed id instead
+of letting `Complaint.findById` throw an uncaught Mongoose `CastError` inside the service
+(which isn't an `ApiError`, so it would otherwise fall through to `errorHandler`'s
+generic `500`). The PC module's `getPcHealthCard` still has this gap unaddressed — see
+[`known-issues.md`](./known-issues.md).
 
 The two service functions are imported with aliases
 (`escalateComplaint as escalateComplaintService`, `resolveComplaint as
@@ -96,10 +105,9 @@ const complaint = await Complaint.create({
   the caller — this is what makes department-scoping of complaints trustworthy later
   (a public caller can't lie about which department a complaint belongs to).
 - `token = nanoid(8)` — an 8-character random token, this is the "unique token" the
-  product spec refers to for public complaint tracking. Note: there is currently no
-  `GET /complaints/track/:token` endpoint to actually look a complaint up by this token
-  (see [`phases.md`](./phases.md), Phase 3) — the token is generated and stored but
-  nothing reads it back yet.
+  product spec refers to for public complaint tracking. `GET /complaints/track/:token`
+  (`trackComplaint` below) looks a complaint up by this token, returning a trimmed
+  `token status currentLevel description createdAt` projection.
 - The first `history[]` entry has `by: null` — there is no authenticated user behind a
   public complaint creation, so there's nothing to attribute the "created" action to.
   Every subsequent history entry (escalate/resolve) has `by: user.id` from the
@@ -114,7 +122,7 @@ const complaint = await Complaint.create({
 const complaint = await Complaint.findById(complaintId)
 if (!complaint) throw new ApiError(404, "Complaint not found")
 if (complaint.status === COMPLAINT_STATUS.RESOLVED) throw new ApiError(400, "Cannot escalate a resolved complaint")
-if (user.role !== ROLES.ADMIN && String(complaint.department) !== String(user.department)) {
+if (user.role !== ROLES.ADMIN && user.role !== ROLES.DEAN_INFRA && String(complaint.department) !== String(user.department)) {
     throw new ApiError(403, "You are not authorized to escalate complaints outside your department")
 }
 if (user.role !== complaint.currentLevel) {
@@ -141,8 +149,10 @@ Five checks, in order, each a distinct failure mode:
    is whatever the JWT payload carried (a string, since JWTs only carry JSON-
    serializable data) — comparing them without stringifying both would use object
    identity (or `ObjectId.toString()` implicitly on one side only) and could produce
-   surprising results. `ROLES.ADMIN` bypasses this check entirely — an admin can
-   escalate any complaint in any department.
+   surprising results. `ROLES.ADMIN` and `ROLES.DEAN_INFRA` both bypass this check
+   entirely — an admin or Dean Infra user can escalate any complaint in any department,
+   matching `deptScope` middleware's treatment of those two roles as unscoped (see
+   [`middlewares.md`](./middlewares.md#deptscope)).
 4. **Current-level match** (`403`) — this is the actual authorization core of the
    escalation chain: only the *specific* role holding a complaint right now
    (`complaint.currentLevel`) can move it forward, not just "any Lab Incharge or HOD
@@ -162,7 +172,7 @@ Then: mutate `currentLevel` and `status` together (from the two lookup tables), 
 const complaint = await Complaint.findById(complaintId)
 if (!complaint) throw new ApiError(404, "Complaint not found")
 if (complaint.status === COMPLAINT_STATUS.RESOLVED) throw new ApiError(400, "Complaint is already resolved")
-if (user.role !== ROLES.ADMIN && String(complaint.department) !== String(user.department)) {
+if (user.role !== ROLES.ADMIN && user.role !== ROLES.DEAN_INFRA && String(complaint.department) !== String(user.department)) {
     throw new ApiError(403, "You are not authorized to resolve complaints outside your department")
 }
 if (user.role !== complaint.currentLevel) {
@@ -186,6 +196,30 @@ up (`escalate`) or close it out (`resolve`) themselves; there's no separate "onl
 level can mark resolved" rule. That matches the product framing ("escalating through a
 fixed chain") where resolution can happen at any point in the chain, not just at the end.
 
+### `trackComplaint(token)`
+
+```js
+const complaint = await Complaint.findOne({ token })
+    .select("token status currentLevel description createdAt")
+if (!complaint) throw new ApiError(404, "Invalid tracking token")
+```
+
+Public lookup, deliberately projected down to a small field set — no `department`/`lab`/
+`history`/`raisedBy` leaked back to an unauthenticated caller who only has the token.
+
+### `getComplaints(scope)`
+
+```js
+const complaints = await Complaint.find({ ...scope }).sort({ createdAt: -1 })
+return complaints
+```
+
+`scope` is `req.scope` as produced by the `deptScope` middleware (`{}` for
+admin/Dean Infra, `{ department: user.department }` otherwise). Returns an array,
+newest first — an empty array (no matching complaints) is a valid `200` result, not a
+`404`, since "no complaints in your department" isn't an error condition for a listing
+endpoint.
+
 ## Model (`src/models/complaint.model.js`)
 
 ```js
@@ -195,7 +229,7 @@ department:   ObjectId -> Dept, required             // copied from Pc at creati
 lab:          ObjectId -> Lab, required               // copied from Pc at creation
 description:  String, required
 raisedBy:     { name: String required, contact: String required }
-status:       enum(COMPLAINT_STATUS values), default "Open"
+status:       enum(COMPLAINT_STATUS values), default COMPLAINT_STATUS.OPEN
 currentLevel: enum(ROLES values minus ADMIN), default ROLES.LAB_INCHARGE
 history: [{
   level:  String,
@@ -215,13 +249,15 @@ bypass checks in the service layer above. Those are two different things: what
 
 ## What's explicitly not built yet in this module
 
-See [`phases.md`](./phases.md) Phase 3/4 for the full picture, but specific to
-complaints:
+Phase 3 (raise, track, escalate, resolve, list) is complete — see
+[`phases.md`](./phases.md). What's left is Phase 4 dashboard functionality on top of the
+existing `list` endpoint: query-param filtering (by `status`/`currentLevel`), pagination,
+and summary counts. `GET /complaints` today returns the full department-scoped result
+set with no filtering or paging.
 
-- `GET /complaints/track/:token` — public lookup by the token generated in
-  `createComplaint`. Nothing consumes `token` after creation today.
-- `GET /complaints` — role-scoped list (needed for any dashboard).
-- No department-scope middleware (`deptScope`) is used on the escalate/resolve routes —
-  the equivalent logic is duplicated inline in the service instead (see
-  [`middlewares.md`](./middlewares.md#deptscope) and
-  [`known-issues.md`](./known-issues.md)).
+Also still true: `deptScope` middleware is only used on the `list` route.
+`escalate`/`resolve` still duplicate the equivalent admin/Dean-Infra-bypass +
+department-match logic inline in the service rather than going through `deptScope` — see
+[`middlewares.md`](./middlewares.md#deptscope) and
+[`known-issues.md`](./known-issues.md). The two implementations are now behaviorally
+consistent (both treat admin and Dean Infra as unscoped), just not unified into one place.

@@ -1,13 +1,17 @@
-import {registerUser, verifyEmailOtp, loginUser, verifyLoginOtp} from "../services/auth.service.js"
+import {registerUser, verifyEmailOtp, loginUser, verifyLoginOtp, refreshAccessToken, logoutUser} from "../services/auth.service.js"
 import {asyncHandler} from "../utils/asyncHandler.js"
 import {ApiResponse} from "../utils/ApiResponse.js"
 import {ApiError} from "../utils/ApiError.js"
+import {parseExpiryToMs} from "../utils/tokenGeneration.js"
 
 const cookieOptions = {
     httpOnly: true, //js cannot read my cookiee in browser
     secure: process.env.NODE_ENV === "production", //only send it over https in production
     sameSite: "strict" //cannot send in cross-site production
 }
+
+const ACCESS_TOKEN_MAX_AGE = parseExpiryToMs(process.env.JWT_ACCESS_EXPIRY)
+const REFRESH_TOKEN_MAX_AGE = parseExpiryToMs(process.env.JWT_REFRESH_EXPIRY)
 
 const register = asyncHandler(async(req,res) => {
     const user = await registerUser(req.body)
@@ -36,13 +40,39 @@ const verifyLogin = asyncHandler(async(req,res) => {
         .status(200)
         .cookie("accessToken", accessToken, {
             ...cookieOptions,
-            maxAge: 15 * 60 * 1000 // 15m, matches JWT_ACCESS_EXPIRY
+            maxAge: ACCESS_TOKEN_MAX_AGE
         })
         .cookie("refreshToken", refreshToken, {
             ...cookieOptions,
-            maxAge: 7 * 24 * 60 * 60 * 1000 // 7d, matches JWT_REFRESH_EXPIRY
+            maxAge: REFRESH_TOKEN_MAX_AGE
         })
         .json(new ApiResponse(200, {user}, "Login successful"))
 })
 
-export { register, verifyEmail, login, verifyLogin }
+const refresh = asyncHandler(async(req,res) => {
+    const {accessToken, refreshToken} = await refreshAccessToken(req.cookies?.refreshToken)
+
+    return res
+        .status(200)
+        .cookie("accessToken", accessToken, {
+            ...cookieOptions,
+            maxAge: ACCESS_TOKEN_MAX_AGE
+        })
+        .cookie("refreshToken", refreshToken, {
+            ...cookieOptions,
+            maxAge: REFRESH_TOKEN_MAX_AGE
+        })
+        .json(new ApiResponse(200, {}, "Access token refreshed"))
+})
+
+const logout = asyncHandler(async(req,res) => {
+    await logoutUser(req.user?.id)
+
+    return res
+        .status(200)
+        .clearCookie("accessToken", cookieOptions)
+        .clearCookie("refreshToken", cookieOptions)
+        .json(new ApiResponse(200, {}, "Logged out successfully"))
+})
+
+export { register, verifyEmail, login, verifyLogin, refresh, logout }

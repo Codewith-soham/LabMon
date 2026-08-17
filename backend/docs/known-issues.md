@@ -7,18 +7,6 @@ in the code (see the "Already fixed" section at the bottom).
 
 ## Real bugs
 
-### `app.js`: missing leading slash on the complaint router mount
-
-```js
-app.use("api/v1/complaint", complaintRouter)   // should be "/api/v1/complaint"
-```
-
-Compare to the other two mounts, which are correct: `app.use("/api/v1/auth", ...)`,
-`app.use("/api/v1/pc", ...)`. Express treats a path without a leading `/` differently
-from one with it — worth confirming with a live request whether `/api/v1/complaint/...`
-still resolves as intended or whether this silently changes matching behavior before
-relying on it. See [`architecture.md`](./architecture.md#router-mounts).
-
 ### `pc.route.js`: `import Router from "express"` uses the wrong export
 
 ```js
@@ -34,29 +22,17 @@ instance and the mismatch could bite (e.g. missing `Router`-specific behavior, o
 confusing anyone reading it expecting a `Router`). See
 [`pc-module.md`](./pc-module.md#route-srcroutespcroutejs).
 
-### `Complaint.status` default is a raw string, not the constant
-
-```js
-status: { type: String, enum: Object.values(COMPLAINT_STATUS), default: "Open" }
-```
-
-Works today because `COMPLAINT_STATUS.OPEN === "Open"`, but defeats the point of
-centralizing the value in `constants.js` — if `COMPLAINT_STATUS.OPEN`'s string value
-ever changed, this default would silently stop matching the enum's intended value
-(though it would still be caught by the `enum` validator failing, just confusingly).
-Should be `default: COMPLAINT_STATUS.OPEN`.
-
 ## Missing validation / defensive checks
 
 ### `pc.service.js`'s `getPcHealthCard` doesn't validate the id shape
 
 `Pc.findOne({ _id: pcId, ...scope })` with a malformed `pcId` throws a Mongoose
 `CastError`, which isn't an `ApiError`, so it falls through to `errorHandler`'s generic
-`500` instead of a clean `400`. `complaint.controller.js`'s `escalateComplaint` does the
-right thing here (`mongoose.Types.ObjectId.isValid(req.params.id)` before calling the
-service) — `resolveComplaint` in the same file does *not* do this check either, so it has
-the identical gap. See [`pc-module.md`](./pc-module.md#getpchealthcardpcid-scope) and
-[`complaint-module.md`](./complaint-module.md#controller-srccontrollerscomplaintcontrollerjs).
+`500` instead of a clean `400`. `complaint.controller.js`'s `escalateComplaint` and
+`resolveComplaint` both do the right thing here
+(`mongoose.Types.ObjectId.isValid(req.params.id)` before calling the service) — this gap
+is specific to the PC module now. See
+[`pc-module.md`](./pc-module.md#getpchealthcardpcid-scope).
 
 ### `syncPcConfig` replaces `config` wholesale, not field-by-field
 
@@ -69,10 +45,9 @@ server-side guard against a partial payload. See
 
 ## Missing endpoints (see `phases.md` for the full roadmap gap analysis)
 
-- No `GET /complaints/track/:token` — the public tracking token generated in
-  `createComplaint` is stored but nothing reads it back.
-- No `GET /complaints` (role-scoped list) or `GET /pcs`/`GET /pc/search` — nothing for a
-  dashboard to call yet (Phase 4/5).
+- `GET /complaints/track/:token` and `GET /complaints` (role-scoped list) now exist. No
+  filtering/pagination on `GET /complaints` yet (Phase 4), and no `GET /pcs`/
+  `GET /pc/search` (Phase 5).
 - No refresh-token redemption endpoint or logout endpoint in the auth module — see
   [`auth-module.md`](./auth-module.md#notable-gaps-in-this-module-see-also-known-issuesmd).
 - No "resend OTP" endpoint — an expired registration OTP requires registering again.
@@ -99,26 +74,16 @@ guesses) a valid `deadStockNo` can overwrite that PC's config. See
 
 ### Department scoping is implemented twice, two different ways
 
-`deptScope` middleware (used only by the PC health-card route) produces a `req.scope`
-object spread into a Mongoose query filter. `complaint.service.js` instead inlines the
-same admin-bypass + department-match logic directly in `escalateComplaint` and
-`resolveComplaint` (`user.role !== ROLES.ADMIN && String(complaint.department) !==
-String(user.department)`), without using `deptScope` at all. If a third role
-(e.g. `DEAN_INFRA`, which `deptScope` treats as scope-free but the complaint service
-does not special-case beyond `ADMIN`) needs consistent treatment, it currently has to be
-special-cased in two different places, and it's easy to update one and forget the other.
-See [`middlewares.md`](./middlewares.md#deptscope) and
+`deptScope` middleware (used on the PC health-card route and the complaint `list`
+route) produces a `req.scope` object spread into a Mongoose query filter.
+`complaint.service.js` instead inlines equivalent admin/Dean-Infra-bypass +
+department-match logic directly in `escalateComplaint` and `resolveComplaint`
+(`user.role !== ROLES.ADMIN && user.role !== ROLES.DEAN_INFRA && String(complaint.department)
+!== String(user.department)`), without using `deptScope` at all. The two
+implementations now agree on which roles are unscoped (admin, Dean Infra), but the logic
+still lives in two places and has to be kept in sync by hand if a role's scoping rules
+ever change. See [`middlewares.md`](./middlewares.md#deptscope) and
 [`complaint-module.md`](./complaint-module.md#escalatecomplaintcomplaintid-user).
-
-Note also the asymmetry this creates: `deptScope` treats `DEAN_INFRA` as unscoped (full
-access, like admin), but `complaint.service.js`'s inline check only bypasses for
-`ROLES.ADMIN` — a Dean Infra user *is* subject to the department check there. This may
-be intentional (Dean Infra sits at the top of the escalation chain but perhaps
-shouldn't act on complaints in departments a complaint hasn't reached them from... except
-Dean Infra can only ever act on a complaint once it's *already* escalated to them, which
-requires `currentLevel === DEAN_INFRA` regardless of department) — but it's worth
-confirming this divergence is deliberate rather than a copy/paste gap between the two
-implementations.
 
 ### `/pc/:id/health-card` is a `POST`, not a `GET`
 

@@ -89,19 +89,22 @@ const deptScope = (req, res, next) => {
     confirms this — see `models.md`).
   - Everyone else (`labIncharge`, `hod`) gets `req.scope = { department:
     req.user.department }` — restricts to their own department only.
-- Currently consumed in exactly one place: `pc.service.js`'s `getPcHealthCard(pcId,
-  scope)` does `Pc.findOne({ _id: pcId, ...scope })`. Spreading `{}` is a no-op filter
-  (matches any department); spreading `{ department: X }` narrows the match. If a
+- Consumed in two places: `pc.service.js`'s `getPcHealthCard(pcId, scope)` does
+  `Pc.findOne({ _id: pcId, ...scope })`, and `complaint.route.js`'s `GET /` (`list`)
+  route applies it before `complaint.service.js`'s `getComplaints(scope)` does
+  `Complaint.find({ ...scope })`. Spreading `{}` is a no-op filter (matches any
+  department); spreading `{ department: X }` narrows the match. On the PC route, if a
   non-admin/non-Dean user requests a PC in another department, the `_id` matches but
   `department` doesn't, so `findOne` returns `null` and the service throws `404 "Pc not
   found"` — **not** a `403`. This is a deliberate (or at least consistent) choice:
   out-of-scope resources look identical to nonexistent ones, avoiding confirming to a
   caller that a specific `_id` exists in a department they can't see.
-- Not used on the complaint routes — `complaint.service.js` does its own inline
-  department check (`String(complaint.department) !== String(user.department)`) rather
-  than relying on this middleware. This is an inconsistency: the same "is this
-  admin/scoped-by-department" logic exists in two different forms in two different
-  layers (see [`known-issues.md`](./known-issues.md)).
+- Still not used on the complaint `escalate`/`resolve` routes — `complaint.service.js`
+  does its own inline department check there instead (now bypassing for both `ADMIN` and
+  `DEAN_INFRA`, matching this middleware's treatment of those roles). This remains an
+  inconsistency worth unifying eventually: the same "is this admin/Dean-Infra/scoped-by-
+  department" logic exists in two different forms in two different layers (see
+  [`known-issues.md`](./known-issues.md)).
 
 ## `errorHandler` — `src/middlewares/error.middleware.js`
 
@@ -156,7 +159,10 @@ controller) reads both `req.params.id` and `req.scope`.
 
 ```js
 router.patch("/:id/escalate", auth, roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD), escalateComplaint)
+router.get("/", auth, deptScope, list)
 ```
 
-Same pattern with `roleCheck` instead of `deptScope` — here the department check happens
-inside the service layer instead of via middleware (see the `deptScope` section above).
+`escalate`/`resolve` use `roleCheck` instead of `deptScope` — the department check for
+those two happens inside the service layer instead of via middleware (see the
+`deptScope` section above). `list` is the one complaint route that does use `deptScope`,
+the same as the PC health-card route.

@@ -47,7 +47,7 @@ const escalateComplaint = async(complaintId, user) => {
         throw new ApiError(400, "Cannot escalate a resolved complaint")
     }
 
-    if(user.role !== ROLES.ADMIN && String(complaint.department) !== String(user.department)){
+    if(user.role !== ROLES.ADMIN && user.role !== ROLES.DEAN_INFRA && String(complaint.department) !== String(user.department)){
         throw new ApiError(403, "You are not authorized to escalate complaints outside your department")
     }
 
@@ -90,7 +90,7 @@ const resolveComplaint = async(complaintId, user, remarks) => {
         throw new ApiError(400, "Complaint is already resolved")
     }
 
-    if(user.role !== ROLES.ADMIN && String(complaint.department) !== String(user.department)){
+    if(user.role !== ROLES.ADMIN && user.role !== ROLES.DEAN_INFRA && String(complaint.department) !== String(user.department)){
         throw new ApiError(403, "You are not authorized to resolve complaints outside your department")
     }
 
@@ -127,11 +127,7 @@ const trackComplaint = async(token) => {
 
 //will get complaints according to their scope of department (if IT -> will recieve IT complaints)
 const getComplaints = async({...scope}) => {
-    const complaints = await Complaint.findOne({...scope }).sort({createdAt: -1}) //will get complaint in descending order
-
-    if(!complaints){
-        throw new ApiError(404, "Complaints not found")
-    }
+    const complaints = await Complaint.find({...scope }).sort({createdAt: -1}) //will get complaints in descending order
 
     return complaints
 }

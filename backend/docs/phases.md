@@ -42,10 +42,11 @@ machine.
 - Escalation state machine: `escalateComplaint` and `resolveComplaint` in
   `complaint.service.js`, driven by the `NEXT_LEVEL` / `STATUS_FOR_LEVEL` lookup tables in
   `constants.js`. See [`complaint-module.md`](./complaint-module.md).
+- Public tracking: `GET /api/v1/complaint/track/:token` via `trackComplaint`.
+- Role/department-scoped listing: `GET /api/v1/complaint` via `getComplaints`, gated by
+  `auth` + `deptScope`.
 
-Not yet done from this phase: `GET /api/complaints/track/:token` (public complaint
-lookup by token) and `GET /api/complaints` (role-scoped list) from the planned API
-surface — no route or controller for either exists yet.
+Everything planned for this phase is now built.
 
 ## Phase 4: Role Dashboards
 
@@ -91,7 +92,7 @@ No indexes beyond the implicit ones from `unique: true` schema fields.
 |---|---|
 | 1. Foundation | Done |
 | 2. Python Agent | Done |
-| 3. Health Card + Complaint Core | Done (minus track-by-token and list endpoints) |
+| 3. Health Card + Complaint Core | Done |
 | 4. Role Dashboards | Not started |
 | 5. Search | Not started |
 | 6. Security Hardening | Partial (Helmet/CORS/audit trail done; rate limiting and request validation missing) |

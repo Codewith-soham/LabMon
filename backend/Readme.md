@@ -2,7 +2,7 @@
 
 LABMON is a MERN-based lab PC health monitoring and complaint management system for college environments. A lightweight Python agent collects each lab PC's hardware and software configuration, syncs it to the backend, and keeps a digital health card updated with department, lab, dead stock number, and warranty status.
 
-The system also supports public complaint submission without login. Each complaint is tracked with a unique token and moves through a strict escalation flow: Lab Incharge -> HOD -> Dean Infra. Role access is scoped by department, and HOD/Dean users can search PCs by hardware or installed software to locate machines quickly across labs.
+The system also supports public complaint submission without login. Each complaint is tracked with a unique token and moves through a strict escalation flow: Lab Incharge -> HOD -> Dean Infra. Role access is scoped by department, and Lab Incharge/HOD/Dean Infra users can search PCs by dead stock number, hardware, installed software, or warranty status to locate machines quickly across labs.
 
 ## Goals
 
@@ -24,9 +24,8 @@ The system also supports public complaint submission without login. Each complai
 
 This repository currently contains the backend scaffold and database models.
 
-- Completed: Department, Lab, User, PC, and Complaint models.
-- In progress: constants, JWT auth, and role/department scoping middleware.
-- Next planned work: complaint workflows, PC sync endpoint, health card APIs, and role-based search.
+- Completed: Department, Lab, User, PC, and Complaint models; JWT auth (register/login/OTP verification/refresh/logout); role and department scoping middleware; PC sync and health-card endpoints; complaint raise/escalate/resolve/track/list endpoints; role-based PC search.
+- Next planned work: Department/Lab/User/PC admin CRUD endpoints, Python agent, React frontend, rate limiting/Helmet hardening, Dockerization/CI.
 
 ## Data Model
 
@@ -97,8 +96,8 @@ PC         1 --- * Complaint
 ## Planned Architecture
 
 ```text
-Python Agent -> Express API (/api/pc/sync)
-React Frontend -> Express API (/api/auth/*, /api/complaints/*, /api/search/*)
+Python Agent -> Express API (/api/v1/pc/sync)
+React Frontend -> Express API (/api/v1/auth/*, /api/v1/complaint/*, /api/v1/pc/*)
 Express API -> MongoDB via Mongoose
 ```
 
@@ -130,9 +129,9 @@ Express API -> MongoDB via Mongoose
 
 ### PC Health
 
-- `POST /api/pc/sync` - Agent device key
-- `GET /api/pc/:id/health-card` - Role-scoped
-- `GET /api/pc/search?cpu=&ram=&software=` - HOD, Dean
+- `POST /api/v1/pc/sync` - Agent device key
+- `POST /api/v1/pc/:id/health-card` - Role-scoped (department scope enforced)
+- `GET /api/v1/pc/search?deadStockNo=&cpu=&ram=&disk=&os=&software=&warrantyStatus=&lab=` - Lab Incharge, HOD, Dean Infra (department-scoped for Lab Incharge/HOD; unrestricted for Dean Infra)
 
 ### Complaints
 
@@ -187,10 +186,11 @@ Express API -> MongoDB via Mongoose
 - Lab Incharge, HOD, and Dean Infra dashboards
 - Backend-enforced visibility
 
-### Phase 5: Search
+### Phase 5: Search (Done)
 
-- PC search by configuration and software
-- Indexed queries
+- PC search by dead stock number, hardware config, installed software, and warranty status
+- Regex-escaped, case-insensitive partial matching; department-scoped for Lab Incharge/HOD, unrestricted for Dean Infra
+- Indexed queries (`department`+`lab`, `warranty.status`)
 
 ### Phase 6: Security Hardening
 

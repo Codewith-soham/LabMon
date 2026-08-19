@@ -1,5 +1,6 @@
 import bcrypt from "bcrypt"
 import jwt from "jsonwebtoken"
+import crypto from "node:crypto"
 import {User} from "../models/user.model.js"
 import {ApiError} from "../utils/ApiError.js"
 import {generateAccessToken, generateRefreshToken} from "../utils/tokenGeneration.js"
@@ -8,6 +9,14 @@ import {sendOtpEmail} from "../utils/mailer.js"
 import {OTP_PURPOSE, OTP_EXPIRY_MINUTES} from "../config/constants.js"
 
 const OTP_EXPIRY_MS = OTP_EXPIRY_MINUTES * 60 * 1000
+
+//bcrypt silently truncates its input to 72 bytes, and refresh tokens are JWTs
+//well past that length, so two tokens sharing a 72-byte prefix (e.g. same
+//header + userId claim, differing only in iat/exp near the end) would hash
+//to the same bcrypt value. SHA-256 the raw token to a fixed 64-char digest
+//first so the full token actually determines the stored hash.
+const hashRefreshToken = (token) => bcrypt.hash(crypto.createHash("sha256").update(token).digest("hex"), 10)
+const compareRefreshToken = (token, hash) => bcrypt.compare(crypto.createHash("sha256").update(token).digest("hex"), hash)
 
 //generates an otp, stores its hash on the user, and emails the plaintext otp
 const issueOtp = async (user, purpose) => {
@@ -143,7 +152,7 @@ const verifyLoginOtp = async({email, otp}) => {
     const refreshToken = generateRefreshToken(user)
 
     //persist a hash of the refresh token so it can be revoked/rotated later
-    user.refreshToken = await bcrypt.hash(refreshToken, 10)
+    user.refreshToken = await hashRefreshToken(refreshToken)
     await user.save({validateBeforeSave: false})
 
     //no returning of password
@@ -171,7 +180,7 @@ const refreshAccessToken = async(candidateRefreshToken) => {
         throw new ApiError(401, "Invalid refresh token")
     }
 
-    const isRefreshTokenValid = await bcrypt.compare(candidateRefreshToken, user.refreshToken)
+    const isRefreshTokenValid = await compareRefreshToken(candidateRefreshToken, user.refreshToken)
 
     if(!isRefreshTokenValid){
         throw new ApiError(401, "Invalid refresh token")
@@ -182,7 +191,7 @@ const refreshAccessToken = async(candidateRefreshToken) => {
     const accessToken = generateAccessToken(user)
     const refreshToken = generateRefreshToken(user)
 
-    user.refreshToken = await bcrypt.hash(refreshToken, 10)
+    user.refreshToken = await hashRefreshToken(refreshToken)
     await user.save({validateBeforeSave: false})
 
     return {accessToken, refreshToken}

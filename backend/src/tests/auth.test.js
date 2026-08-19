@@ -49,14 +49,49 @@ function randomUser(overrides = {}) {
     }
 }
 
-async function postJson(path, payload) {
+async function postJson(path, payload, extraHeaders = {}) {
     const res = await fetch(`${baseUrl}${path}`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...extraHeaders },
         body: JSON.stringify(payload)
     })
     const body = await res.json()
     return { res, body }
+}
+
+// pulls just the "name=value" pairs back out of Set-Cookie headers so they can
+// be replayed on the next request via a Cookie header (fetch has no cookie jar)
+function cookieHeaderFrom(setCookieHeaders) {
+    return setCookieHeaders.map((c) => c.split(";")[0]).join("; ")
+}
+
+function extractCookie(setCookieHeaders, name) {
+    const match = setCookieHeaders.find((c) => c.startsWith(`${name}=`))
+    return match ? match.split(";")[0].slice(name.length + 1) : undefined
+}
+
+// refresh tokens are JWTs signed with second-resolution "iat"; two tokens
+// minted for the same user within the same second are byte-for-byte
+// identical, so rotation tests need to cross a second boundary to be
+// meaningful (otherwise the "old" token IS the "new" token).
+function sleepPastCurrentSecond() {
+    return new Promise((resolve) => setTimeout(resolve, 1000 - (Date.now() % 1000) + 50))
+}
+
+async function loginAndVerify(payload) {
+    const loginOtpPromise = waitForOtp(payload.email, OTP_PURPOSE.LOGIN)
+    await postJson("/api/v1/auth/login", { email: payload.email, password: payload.password })
+    const otp = await loginOtpPromise
+
+    const { res, body } = await postJson("/api/v1/auth/verify-login-otp", { email: payload.email, otp })
+    const cookies = res.headers.getSetCookie()
+
+    return {
+        body,
+        accessToken: extractCookie(cookies, "accessToken"),
+        refreshToken: extractCookie(cookies, "refreshToken"),
+        cookieHeader: cookieHeaderFrom(cookies)
+    }
 }
 
 function waitForOtp(email, purpose) {
@@ -191,6 +226,79 @@ test("login - rejects an unknown email with 401", async () => {
         email: `nobody.${crypto.randomBytes(6).toString("hex")}@labmon.test`,
         password: "whatever-password"
     })
+
+    assert.equal(res.status, 401)
+    assert.equal(body.success, false)
+})
+
+test("refresh-token - issues a new access/refresh cookie pair for a valid refresh token", async () => {
+    const { payload } = await registerAndVerifyUser()
+    const { refreshToken } = await loginAndVerify(payload)
+    await sleepPastCurrentSecond()
+
+    const { res, body } = await postJson("/api/v1/auth/refresh-token", {}, {
+        Cookie: `refreshToken=${refreshToken}`
+    })
+    const cookies = res.headers.getSetCookie()
+
+    assert.equal(res.status, 200)
+    assert.equal(body.success, true)
+    assert.ok(cookies.some((c) => c.startsWith("accessToken=")))
+    assert.ok(cookies.some((c) => c.startsWith("refreshToken=")))
+    assert.notEqual(extractCookie(cookies, "refreshToken"), refreshToken)
+})
+
+test("refresh-token - rejects a request with no refresh token cookie (401)", async () => {
+    const { res, body } = await postJson("/api/v1/auth/refresh-token", {})
+
+    assert.equal(res.status, 401)
+    assert.equal(body.success, false)
+})
+
+test("refresh-token - rejects a garbage/invalid refresh token (401)", async () => {
+    const { res, body } = await postJson("/api/v1/auth/refresh-token", {}, {
+        Cookie: "refreshToken=not-a-real-token"
+    })
+
+    assert.equal(res.status, 401)
+    assert.equal(body.success, false)
+})
+
+test("refresh-token - rejects a token that was already rotated away by a prior refresh (401)", async () => {
+    const { payload } = await registerAndVerifyUser()
+    const { refreshToken } = await loginAndVerify(payload)
+    await sleepPastCurrentSecond()
+
+    await postJson("/api/v1/auth/refresh-token", {}, { Cookie: `refreshToken=${refreshToken}` })
+    await sleepPastCurrentSecond()
+    const { res, body } = await postJson("/api/v1/auth/refresh-token", {}, { Cookie: `refreshToken=${refreshToken}` })
+
+    assert.equal(res.status, 401)
+    assert.equal(body.success, false)
+})
+
+test("logout - clears auth cookies and revokes the stored refresh token", async () => {
+    const { payload } = await registerAndVerifyUser()
+    const { accessToken, refreshToken } = await loginAndVerify(payload)
+
+    const { res, body } = await postJson("/api/v1/auth/logout", {}, {
+        Authorization: `Bearer ${accessToken}`
+    })
+    const cookies = res.headers.getSetCookie()
+
+    assert.equal(res.status, 200)
+    assert.equal(body.success, true)
+    assert.ok(cookies.some((c) => c.startsWith("accessToken=") && /Expires=Thu, 01 Jan 1970/i.test(c)))
+    assert.ok(cookies.some((c) => c.startsWith("refreshToken=") && /Expires=Thu, 01 Jan 1970/i.test(c)))
+
+    const { res: refreshRes } = await postJson("/api/v1/auth/refresh-token", {}, {
+        Cookie: `refreshToken=${refreshToken}`
+    })
+    assert.equal(refreshRes.status, 401)
+})
+
+test("logout - rejects a request with no Authorization header (401)", async () => {
+    const { res, body } = await postJson("/api/v1/auth/logout", {})
 
     assert.equal(res.status, 401)
     assert.equal(body.success, false)

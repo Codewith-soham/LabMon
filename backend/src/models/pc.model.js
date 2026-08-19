@@ -62,4 +62,7 @@ const pcSchema = new mongoose.Schema({
 }, {timestamps:true}
 )
 
+pcSchema.index({ department: 1, lab: 1 })
+pcSchema.index({ "warranty.status": 1 })
+
 export const Pc = mongoose.model("Pc", pcSchema)

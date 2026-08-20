@@ -1,4 +1,4 @@
-import {registerUser, verifyEmailOtp, loginUser, verifyLoginOtp, refreshAccessToken, logoutUser} from "../services/auth.service.js"
+import {registerUser, verifyEmailOtp, resendOtp, loginUser, verifyLoginOtp, refreshAccessToken, logoutUser} from "../services/auth.service.js"
 import {asyncHandler} from "../utils/asyncHandler.js"
 import {ApiResponse} from "../utils/ApiResponse.js"
 import {ApiError} from "../utils/ApiError.js"
@@ -24,6 +24,13 @@ const verifyEmail = asyncHandler(async(req,res) => {
     const user = await verifyEmailOtp({email, otp})
 
     return res.status(200).json(new ApiResponse(200, user, "Email verified successfully"))
+})
+
+const resend = asyncHandler(async(req,res) => {
+    const {email, purpose} = req.body
+    const result = await resendOtp({email, purpose})
+
+    return res.status(200).json(new ApiResponse(200, result, "OTP resent successfully"))
 })
 
 const login = asyncHandler(async(req,res) => {
@@ -75,4 +82,4 @@ const logout = asyncHandler(async(req,res) => {
         .json(new ApiResponse(200, {}, "Logged out successfully"))
 })
 
-export { register, verifyEmail, login, verifyLogin, refresh, logout }
+export { register, verifyEmail, resend, login, verifyLogin, refresh, logout }

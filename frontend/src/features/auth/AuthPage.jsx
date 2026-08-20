@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import './AuthPage.css';
 import bgImage from '../../assets/college-bg.jpg';
 import { login, register } from '../../services/authService';
@@ -279,6 +279,20 @@ function AuthPage() {
               {submitting ? 'Please wait…' : isSignup ? 'Sign Up' : 'Sign In'}
             </button>
           </form>
+        )}
+
+        {step === 'form' && (
+          <p style={{ marginTop: 20, textAlign: 'center', fontSize: 13, color: '#6b7280' }}>
+            Have a lab PC issue?{' '}
+            <Link to={ROUTES.RAISE_COMPLAINT} style={{ color: '#e66a0a', fontWeight: 600 }}>
+              Raise a complaint
+            </Link>{' '}
+            or{' '}
+            <Link to={ROUTES.TRACK_COMPLAINT} style={{ color: '#e66a0a', fontWeight: 600 }}>
+              track one
+            </Link>{' '}
+            — no login needed.
+          </p>
         )}
       </div>
     </div>

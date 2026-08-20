@@ -1,11 +1,9 @@
-import { STATUS_META } from './complaintData';
+import { STATUS_META, LEVEL_LABEL, formatDateTime, describeHistoryEntry } from './complaintMeta';
 
-function ComplaintDetailModal({ complaint, onClose, onEscalate, onResolve }) {
+function ComplaintDetailModal({ complaint, canAct, onClose, onEscalate, onResolveClick }) {
   if (!complaint) return null;
 
   const meta = STATUS_META[complaint.status];
-  const canEscalate = complaint.status === 'Open';
-  const canResolve = complaint.status !== 'Resolved';
 
   const handleOverlayClick = (e) => {
     if (e.target === e.currentTarget) onClose();
@@ -18,7 +16,7 @@ function ComplaintDetailModal({ complaint, onClose, onEscalate, onResolve }) {
           <div>
             <p className="portal-label">COMPLAINT DETAILS</p>
             <h1 className="brand-title" style={{ fontSize: 22 }}>
-              {complaint.id}
+              {complaint.token}
             </h1>
           </div>
           <button type="button" className="detail-close" onClick={onClose} aria-label="Close">
@@ -39,19 +37,20 @@ function ComplaintDetailModal({ complaint, onClose, onEscalate, onResolve }) {
           <div className="detail-meta-grid">
             <div>
               <p className="field-label">Raised By</p>
-              <p className="detail-value">{complaint.raisedBy}</p>
+              <p className="detail-value">{complaint.raisedBy?.name}</p>
+              <p className="detail-value detail-value-sub">{complaint.raisedBy?.contact}</p>
             </div>
             <div>
               <p className="field-label">Date Raised</p>
-              <p className="detail-value">{complaint.date}</p>
+              <p className="detail-value">{formatDateTime(complaint.createdAt)}</p>
             </div>
             <div>
-              <p className="field-label">Lab / Location</p>
-              <p className="detail-value">{complaint.location}</p>
+              <p className="field-label">Lab</p>
+              <p className="detail-value">{complaint.lab?.name || complaint.lab}</p>
             </div>
             <div>
               <p className="field-label">Current Level</p>
-              <p className="detail-value">{complaint.level}</p>
+              <p className="detail-value">{LEVEL_LABEL[complaint.currentLevel] || complaint.currentLevel}</p>
             </div>
           </div>
 
@@ -60,30 +59,32 @@ function ComplaintDetailModal({ complaint, onClose, onEscalate, onResolve }) {
           </p>
           <ul className="detail-history">
             {complaint.history.map((entry, idx) => (
-              <li key={idx}>{entry}</li>
+              <li key={idx} className="detail-history-entry">
+                <div className="detail-history-row">
+                  <span className="detail-history-action">{describeHistoryEntry(entry)}</span>
+                  <span className="detail-history-time">{formatDateTime(entry.at)}</span>
+                </div>
+                {entry.note && <p className="detail-history-note">"{entry.note}"</p>}
+              </li>
             ))}
           </ul>
 
-          {(canEscalate || canResolve) && (
+          {canAct && (
             <div className="detail-actions">
-              {canEscalate && (
-                <button
-                  type="button"
-                  className="action-btn action-btn--escalate"
-                  onClick={() => onEscalate(complaint.id)}
-                >
-                  Escalate
-                </button>
-              )}
-              {canResolve && (
-                <button
-                  type="button"
-                  className="action-btn action-btn--resolve"
-                  onClick={() => onResolve(complaint.id)}
-                >
-                  Resolve
-                </button>
-              )}
+              <button
+                type="button"
+                className="action-btn action-btn--escalate"
+                onClick={() => onEscalate(complaint._id)}
+              >
+                Escalate
+              </button>
+              <button
+                type="button"
+                className="action-btn action-btn--resolve"
+                onClick={() => onResolveClick(complaint)}
+              >
+                Resolve
+              </button>
             </div>
           )}
         </div>

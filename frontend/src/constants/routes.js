@@ -7,4 +7,6 @@ export const ROUTES = {
   EQUIPMENT: '/equipment',
   INVENTORY: '/inventory',
   REQUESTS: '/requests',
+  RAISE_COMPLAINT: '/raise-complaint',
+  TRACK_COMPLAINT: '/track-complaint',
 };

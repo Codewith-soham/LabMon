@@ -1,5 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import AuthPage from '../features/auth/AuthPage';
+import RaiseComplaintPage from '../features/public-complaint/RaiseComplaintPage';
+import TrackComplaintPage from '../features/public-complaint/TrackComplaintPage';
 import LabInchargeHome from '../features/lab-incharge/LabInchargeHome';
 import HodHome from '../features/hod/HodHome';
 import DeanInfraHome from '../features/dean-infra/DeanInfraHome';
@@ -14,7 +16,10 @@ import { ROUTES } from '../constants/routes';
 function AppRoutes() {
   return (
     <Routes>
+      <Route path="/" element={<RaiseComplaintPage />} />
       <Route path={ROUTES.LOGIN} element={<AuthPage />} />
+      <Route path={ROUTES.RAISE_COMPLAINT} element={<RaiseComplaintPage />} />
+      <Route path={ROUTES.TRACK_COMPLAINT} element={<TrackComplaintPage />} />
 
       <Route
         path={ROUTES.LAB_INCHARGE_HOME}
@@ -73,7 +78,7 @@ function AppRoutes() {
         }
       />
 
-      <Route path="*" element={<Navigate to={ROUTES.LOGIN} replace />} />
+      <Route path="*" element={<Navigate to={ROUTES.RAISE_COMPLAINT} replace />} />
     </Routes>
   );
 }

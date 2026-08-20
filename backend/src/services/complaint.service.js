@@ -75,6 +75,10 @@ const escalateComplaint = async(complaintId, user) => {
     })
 
     await complaint.save()
+    await complaint.populate([
+        { path: "lab", select: "name" },
+        { path: "history.by", select: "name" }
+    ])
 
     return complaint
 }
@@ -109,6 +113,10 @@ const resolveComplaint = async(complaintId, user, remarks) => {
     })
 
     await complaint.save()
+    await complaint.populate([
+        { path: "lab", select: "name" },
+        { path: "history.by", select: "name" }
+    ])
 
     return complaint
 }
@@ -127,7 +135,10 @@ const trackComplaint = async(token) => {
 
 //will get complaints according to their scope of department (if IT -> will recieve IT complaints)
 const getComplaints = async({...scope}) => {
-    const complaints = await Complaint.find({...scope }).sort({createdAt: -1}) //will get complaints in descending order
+    const complaints = await Complaint.find({...scope })
+        .sort({createdAt: -1}) //will get complaints in descending order
+        .populate("lab", "name")
+        .populate("history.by", "name")
 
     return complaints
 }

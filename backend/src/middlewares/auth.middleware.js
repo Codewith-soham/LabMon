@@ -3,12 +3,12 @@ import { ApiError } from "../utils/ApiError.js"
 
 const auth = (req, res, next) => {
     const authHeader = req.headers.authorization
+    const headerToken = authHeader?.startsWith("Bearer") ? authHeader.split(" ")[1] : null
+    const token = headerToken || req.cookies?.accessToken
 
-    if(!authHeader || !authHeader.startsWith("Bearer")){
+    if(!token){
         throw new ApiError(401, "Authentication required")
     }
-
-    const token = authHeader.split(" ")[1]//bearer[0] ueufeboeh[1] splits the whitespace
 
     try{
         const decoded = jwt.verify(

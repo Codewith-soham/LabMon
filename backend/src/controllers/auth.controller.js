@@ -1,4 +1,4 @@
-import {registerUser, verifyEmailOtp, resendOtp, loginUser, verifyLoginOtp, refreshAccessToken, logoutUser} from "../services/auth.service.js"
+import {registerUser, verifyEmailOtp, resendOtp, loginUser, verifyLoginOtp, refreshAccessToken, logoutUser, getCurrentUser} from "../services/auth.service.js"
 import {asyncHandler} from "../utils/asyncHandler.js"
 import {ApiResponse} from "../utils/ApiResponse.js"
 import {ApiError} from "../utils/ApiError.js"
@@ -82,4 +82,10 @@ const logout = asyncHandler(async(req,res) => {
         .json(new ApiResponse(200, {}, "Logged out successfully"))
 })
 
-export { register, verifyEmail, resend, login, verifyLogin, refresh, logout }
+const me = asyncHandler(async(req,res) => {
+    const user = await getCurrentUser(req.user.id)
+
+    return res.status(200).json(new ApiResponse(200, {user}, "Current user fetched"))
+})
+
+export { register, verifyEmail, resend, login, verifyLogin, refresh, logout, me }

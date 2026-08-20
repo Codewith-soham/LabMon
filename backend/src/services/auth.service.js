@@ -2,6 +2,7 @@ import bcrypt from "bcrypt"
 import jwt from "jsonwebtoken"
 import crypto from "node:crypto"
 import {User} from "../models/user.model.js"
+import {Dept} from "../models/department.model.js"
 import {ApiError} from "../utils/ApiError.js"
 import {generateAccessToken, generateRefreshToken} from "../utils/tokenGeneration.js"
 import {generateOtp, hashOtp, compareOtp} from "../utils/otp.js"
@@ -39,13 +40,26 @@ const registerUser = async({name, email, password, role, department}) => {
         throw new ApiError(409, "User with this email already exists")
     }
 
+    //department is submitted as a name (e.g. "Computer Science"), but the
+    //User model stores a Dept ObjectId reference, so resolve it here
+    let departmentId = null
+    if(department){
+        const dept = await Dept.findOne({ name: department.trim() })
+
+        if(!dept){
+            throw new ApiError(404, `Department "${department}" not found`)
+        }
+
+        departmentId = dept._id
+    }
+
     //create user
     const user = await User.create({
         name,
         email,
         password,
         role,
-        department
+        department: departmentId
     })
 
     //send an otp so the user can verify their email
@@ -93,6 +107,36 @@ const verifyEmailOtp = async({email, otp}) => {
     user.password = undefined
 
     return user
+}
+
+const resendOtp = async({email, purpose}) => {
+
+    if(!Object.values(OTP_PURPOSE).includes(purpose)){
+        throw new ApiError(400, "Invalid OTP purpose")
+    }
+
+    const user = await User.findOne({email}).select("+otp +otpExpiry +otpPurpose")
+
+    if(!user){
+        throw new ApiError(404, "User not found")
+    }
+
+    if(purpose === OTP_PURPOSE.EMAIL_VERIFICATION){
+        if(user.isEmailVerified){
+            throw new ApiError(400, "Email is already verified")
+        }
+    }else{
+        //login OTPs are only resendable if a login was already initiated with
+        //the correct password - otherwise anyone could get a fresh login otp
+        //for any email without ever proving they know the password
+        if(user.otpPurpose !== OTP_PURPOSE.LOGIN){
+            throw new ApiError(400, "No pending login to resend an otp for")
+        }
+    }
+
+    await issueOtp(user, purpose)
+
+    return {email: user.email}
 }
 
 const loginUser = async({email, password}) => {
@@ -216,6 +260,7 @@ const logoutUser = async(userId) => {
 export {
     registerUser,
     verifyEmailOtp,
+    resendOtp,
     loginUser,
     verifyLoginOtp,
     refreshAccessToken,

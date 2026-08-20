@@ -161,6 +161,92 @@ test("verify-email - rejects an incorrect OTP with 400", async () => {
     assert.equal(body.success, false)
 })
 
+test("resend-otp - reissues an email-verification otp that then verifies successfully", async () => {
+    const { payload } = await registerRandomUser()
+
+    const otpPromise = waitForOtp(payload.email, OTP_PURPOSE.EMAIL_VERIFICATION)
+    const { res, body } = await postJson("/api/v1/auth/resend-otp", {
+        email: payload.email,
+        purpose: OTP_PURPOSE.EMAIL_VERIFICATION
+    })
+    const otp = await otpPromise
+
+    assert.equal(res.status, 200)
+    assert.equal(body.success, true)
+
+    const { res: verifyRes, body: verifyBody } = await postJson("/api/v1/auth/verify-email", { email: payload.email, otp })
+
+    assert.equal(verifyRes.status, 200)
+    assert.equal(verifyBody.data.isEmailVerified, true)
+})
+
+test("resend-otp - rejects an email-verification resend for an already-verified account (400)", async () => {
+    const { payload } = await registerAndVerifyUser()
+
+    const { res, body } = await postJson("/api/v1/auth/resend-otp", {
+        email: payload.email,
+        purpose: OTP_PURPOSE.EMAIL_VERIFICATION
+    })
+
+    assert.equal(res.status, 400)
+    assert.equal(body.success, false)
+})
+
+test("resend-otp - rejects a login resend with no login already initiated (400)", async () => {
+    const { payload } = await registerAndVerifyUser()
+
+    const { res, body } = await postJson("/api/v1/auth/resend-otp", {
+        email: payload.email,
+        purpose: OTP_PURPOSE.LOGIN
+    })
+
+    assert.equal(res.status, 400)
+    assert.equal(body.success, false)
+})
+
+test("resend-otp - reissues a login otp once a login has been initiated, and the new otp verifies", async () => {
+    const { payload } = await registerAndVerifyUser()
+
+    await postJson("/api/v1/auth/login", { email: payload.email, password: payload.password })
+
+    const otpPromise = waitForOtp(payload.email, OTP_PURPOSE.LOGIN)
+    const { res, body } = await postJson("/api/v1/auth/resend-otp", {
+        email: payload.email,
+        purpose: OTP_PURPOSE.LOGIN
+    })
+    const otp = await otpPromise
+
+    assert.equal(res.status, 200)
+    assert.equal(body.success, true)
+
+    const { res: verifyRes, body: verifyBody } = await postJson("/api/v1/auth/verify-login-otp", { email: payload.email, otp })
+
+    assert.equal(verifyRes.status, 200)
+    assert.equal(verifyBody.data.user.email, payload.email)
+})
+
+test("resend-otp - rejects an unknown email with 404", async () => {
+    const { res, body } = await postJson("/api/v1/auth/resend-otp", {
+        email: `nobody.${crypto.randomBytes(6).toString("hex")}@labmon.test`,
+        purpose: OTP_PURPOSE.EMAIL_VERIFICATION
+    })
+
+    assert.equal(res.status, 404)
+    assert.equal(body.success, false)
+})
+
+test("resend-otp - rejects an invalid purpose with 400", async () => {
+    const { payload } = await registerRandomUser()
+
+    const { res, body } = await postJson("/api/v1/auth/resend-otp", {
+        email: payload.email,
+        purpose: "not-a-real-purpose"
+    })
+
+    assert.equal(res.status, 400)
+    assert.equal(body.success, false)
+})
+
 test("login - rejects an unverified account with 403", async () => {
     const { payload } = await registerRandomUser()
 

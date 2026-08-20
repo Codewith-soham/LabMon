@@ -11,16 +11,17 @@ const syncPcConfig = async (payload) => {
     throw new ApiError(400, "deadStockNo is required")
   }
 
+  const configSet = {}
+  for (const [key, value] of Object.entries(config || {})) {
+    if (value !== undefined) {
+      configSet[`config.${key}`] = value
+    }
+  }
+  configSet["config.lastSyncedAt"] = new Date()
+
   const pc = await Pc.findOneAndUpdate(
     { deadStockNo },
-    {
-      $set: {
-        config: {
-          ...config,
-          lastSyncedAt: new Date(),
-        },
-      },
-    },
+    { $set: configSet },
     { returnDocument: "after" },
   )
 
@@ -32,6 +33,10 @@ const syncPcConfig = async (payload) => {
 }
 
 const getPcHealthCard = async(pcId , scope) => {
+  if (!mongoose.Types.ObjectId.isValid(pcId)) {
+    throw new ApiError(400, "Invalid PC id")
+  }
+
   const pc = await Pc.findOne({_id: pcId, ...scope})
 
   if(!pc){

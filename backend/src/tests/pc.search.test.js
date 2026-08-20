@@ -78,9 +78,9 @@ before(async () => {
     pcs = { pcA1, pcA2, pcB1 }
 
     // --- users, one per role we need tokens for ---
-    tokens.labIncharge = await registerLoginAndGetToken({ role: ROLES.LAB_INCHARGE, department: deptA._id })
-    tokens.hod = await registerLoginAndGetToken({ role: ROLES.HOD, department: deptA._id })
-    tokens.labInchargeB = await registerLoginAndGetToken({ role: ROLES.LAB_INCHARGE, department: deptB._id })
+    tokens.labIncharge = await registerLoginAndGetToken({ role: ROLES.LAB_INCHARGE, department: deptA.name })
+    tokens.hod = await registerLoginAndGetToken({ role: ROLES.HOD, department: deptA.name })
+    tokens.labInchargeB = await registerLoginAndGetToken({ role: ROLES.LAB_INCHARGE, department: deptB.name })
     tokens.deanInfra = await registerLoginAndGetToken({ role: ROLES.DEAN_INFRA })
     tokens.admin = await registerLoginAndGetToken({ role: ROLES.ADMIN })
 })

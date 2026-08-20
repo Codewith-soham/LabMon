@@ -8,6 +8,8 @@ export const logout = () => apiClient.post('/auth/logout');
 
 export const refresh = () => apiClient.post('/auth/refresh-token');
 
+export const getCurrentUser = () => apiClient.get('/auth/me');
+
 export const verifyEmailOtp = (payload) => apiClient.post('/auth/verify-email', payload);
 
 export const verifyLoginOtp = (payload) => apiClient.post('/auth/verify-login-otp', payload);

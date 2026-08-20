@@ -202,7 +202,20 @@ const verifyLoginOtp = async({email, otp}) => {
     //no returning of password
     user.password = undefined
 
+    await user.populate("department", "name")
+
     return {user, accessToken, refreshToken}
+}
+
+//used to rehydrate the frontend's session (e.g. on page load) from the accessToken cookie alone
+const getCurrentUser = async(userId) => {
+    const user = await User.findById(userId).populate("department", "name")
+
+    if(!user){
+        throw new ApiError(401, "Not authenticated")
+    }
+
+    return user
 }
 
 const refreshAccessToken = async(candidateRefreshToken) => {
@@ -264,5 +277,6 @@ export {
     loginUser,
     verifyLoginOtp,
     refreshAccessToken,
-    logoutUser
+    logoutUser,
+    getCurrentUser
 }

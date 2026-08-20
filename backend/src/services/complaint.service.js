@@ -4,6 +4,14 @@ import { Pc } from "../models/pc.model.js"
 import { ApiError } from "../utils/ApiError.js"
 import { ROLES, COMPLAINT_STATUS, NEXT_LEVEL, STATUS_FOR_LEVEL } from "../config/constants.js"
 
+// Mirrors deptScope middleware's rule: admin/deanInfra see everything, everyone else is department-locked.
+const assertDeptAccess = (user, department, action) => {
+    const isUnscoped = user.role === ROLES.ADMIN || user.role === ROLES.DEAN_INFRA
+    if (!isUnscoped && String(department) !== String(user.department)) {
+        throw new ApiError(403, `You are not authorized to ${action} complaints outside your department`)
+    }
+}
+
 const createComplaint = async({deadStockNo, description, raisedBy }) => {
     const pc = await Pc.findOne({deadStockNo})
 
@@ -47,9 +55,7 @@ const escalateComplaint = async(complaintId, user) => {
         throw new ApiError(400, "Cannot escalate a resolved complaint")
     }
 
-    if(user.role !== ROLES.ADMIN && user.role !== ROLES.DEAN_INFRA && String(complaint.department) !== String(user.department)){
-        throw new ApiError(403, "You are not authorized to escalate complaints outside your department")
-    }
+    assertDeptAccess(user, complaint.department, "escalate")
 
     if(user.role !== complaint.currentLevel){
         throw new ApiError(403, "Only the current level's incharge can escalate this complaint")
@@ -94,9 +100,7 @@ const resolveComplaint = async(complaintId, user, remarks) => {
         throw new ApiError(400, "Complaint is already resolved")
     }
 
-    if(user.role !== ROLES.ADMIN && user.role !== ROLES.DEAN_INFRA && String(complaint.department) !== String(user.department)){
-        throw new ApiError(403, "You are not authorized to resolve complaints outside your department")
-    }
+    assertDeptAccess(user, complaint.department, "resolve")
 
     if(user.role !== complaint.currentLevel){
         throw new ApiError(403, "Only the current level's incharge can resolve this complaint")

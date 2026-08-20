@@ -3,16 +3,20 @@
 .env.*
 !.env.example
 
-# --- Node (backend) ---
+# --- Node (backend + frontend) ---
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+pnpm-debug.log*
 .npm/
 .eslintcache
 coverage/
 dist/
+dist-ssr/
 build/
+*.local
+*.tsbuildinfo
 
 # --- Python (agent) ---
 venv/
@@ -33,7 +37,8 @@ Thumbs.db
 
 # --- Editor ---
 .idea/
-.vscode/
+.vscode/*
+!.vscode/extensions.json
 
 # --- Misc ---
 *.pid

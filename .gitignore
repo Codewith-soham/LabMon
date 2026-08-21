@@ -50,3 +50,6 @@ uploads/
 
 # --- Project docs (internal, not for repo) ---
 CLAUDE.md
+
+# --- Personal dev/testing scripts ---
+backend/scripts/

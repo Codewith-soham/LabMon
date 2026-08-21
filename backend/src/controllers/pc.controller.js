@@ -1,4 +1,4 @@
-import { syncPcConfig, getPcHealthCard, searchPcs } from "../services/pc.service.js";
+import { syncPcConfig, getPcHealthCard, searchPcs, lookupPcByDeadStockNo } from "../services/pc.service.js";
 import { asyncHandler } from "../utils/asyncHandler.js"
 import { ApiResponse } from "../utils/ApiResponse.js"
 
@@ -20,8 +20,15 @@ const searchPc = asyncHandler(async(req,res) => {
     return res.status(200).json(new ApiResponse(200, pcs , "PC search results fetched"))
 })
 
+const lookupPc = asyncHandler(async(req,res) => {
+    const pc = await lookupPcByDeadStockNo(req.params.deadStockNo)
+
+    return res.status(200).json(new ApiResponse(200, pc , "PC found"))
+})
+
 export {
     syncPc,
     PcHealthCard,
-    searchPc
+    searchPc,
+    lookupPc
 }

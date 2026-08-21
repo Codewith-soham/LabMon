@@ -77,8 +77,8 @@ def collect_software():
     return sorted(names)
 
 
-def build_payload(dead_stock_no):
-    return {
+def build_payload(dead_stock_no, department=None, lab=None):
+    payload = {
         "deadStockNo": dead_stock_no,
         "config": {
             "cpu": collect_cpu(),
@@ -89,6 +89,11 @@ def build_payload(dead_stock_no):
             "lastSyncedAt": datetime.now(timezone.utc).isoformat(),
         },
     }
+    if department:
+        payload["department"] = department
+    if lab:
+        payload["lab"] = lab
+    return payload
 
 
 def sync(payload):
@@ -103,7 +108,12 @@ def main():
         print("Dead Stock Number is required.")
         sys.exit(1)
 
-    payload = build_payload(dead_stock_no)
+    # Only needed the first time this PC is synced — an already-provisioned PC just
+    # refreshes its hardware config if these are left blank.
+    department = input("Enter Department name (e.g. Computer Science) [leave blank if already set up]: ").strip()
+    lab = input("Enter Lab name (e.g. Lab 1) [leave blank if already set up]: ").strip()
+
+    payload = build_payload(dead_stock_no, department, lab)
     print(f"Syncing config for {dead_stock_no} to {SYNC_ENDPOINT} ...")
 
     try:

@@ -1,9 +1,7 @@
+import PcSearchPage from '../pc-search/PcSearchPage';
+
 function LaboratoriesPage() {
-  return (
-    <div>
-      <h1>Laboratories</h1>
-    </div>
-  );
+  return <PcSearchPage />;
 }
 
 export default LaboratoriesPage;

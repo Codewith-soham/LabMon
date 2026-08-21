@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import './LabInchargeHome.css';
 import '../auth/AuthPage.css';
 import Donut from './Donut';
@@ -21,6 +21,8 @@ function LabInchargeHome() {
   const [resolvingComplaint, setResolvingComplaint] = useState(null);
   const [resolveSubmitting, setResolveSubmitting] = useState(false);
   const [resolveError, setResolveError] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState('');
   const { user, setUser } = useAuth();
   const navigate = useNavigate();
 
@@ -57,6 +59,30 @@ function LabInchargeHome() {
     const resolved = complaints.filter((c) => c.status === 'Resolved').length;
     return { total, open, escalated, resolved };
   }, [complaints]);
+
+  const visibleComplaints = useMemo(() => {
+    let list = complaints;
+
+    if (statusFilter === 'open') {
+      list = list.filter((c) => c.status === 'Open');
+    } else if (statusFilter === 'escalated') {
+      list = list.filter((c) => c.status === 'Escalated_HOD' || c.status === 'Escalated_Dean');
+    } else if (statusFilter === 'resolved') {
+      list = list.filter((c) => c.status === 'Resolved');
+    }
+
+    const term = searchTerm.trim().toLowerCase();
+    if (term) {
+      list = list.filter(
+        (c) =>
+          c.description?.toLowerCase().includes(term) ||
+          c.raisedBy?.name?.toLowerCase().includes(term) ||
+          c.token?.toLowerCase().includes(term),
+      );
+    }
+
+    return list;
+  }, [complaints, statusFilter, searchTerm]);
 
   const replaceComplaint = (updated) => {
     setComplaints((prev) => prev.map((c) => (c._id === updated._id ? updated : c)));
@@ -123,45 +149,82 @@ function LabInchargeHome() {
       </header>
 
       <main className="dashboard-content">
+        <div className="dashboard-toolbar">
+          <Link to={ROUTES.LABORATORIES} className="pc-search-link-btn">
+            PC Search
+          </Link>
+        </div>
+
         <section className="stat-grid">
-          <div className="stat-card">
+          <button
+            type="button"
+            className={`stat-card stat-card--filterable ${statusFilter === 'all' ? 'stat-card--active' : ''}`}
+            onClick={() => setStatusFilter('all')}
+          >
             <div>
               <p className="stat-card-label">Total Complaints</p>
               <p className="stat-card-value">{stats.total}</p>
             </div>
-          </div>
+          </button>
 
-          <div className="stat-card">
+          <button
+            type="button"
+            className={`stat-card stat-card--filterable ${statusFilter === 'open' ? 'stat-card--active' : ''}`}
+            onClick={() => setStatusFilter('open')}
+          >
             <div>
               <p className="stat-card-label">Open</p>
               <p className="stat-card-value">{stats.open}</p>
               <p className="stat-card-sub">of {stats.total} total</p>
             </div>
             <Donut value={stats.open} total={stats.total} colorClass="donut-value--orange" />
-          </div>
+          </button>
 
-          <div className="stat-card">
+          <button
+            type="button"
+            className={`stat-card stat-card--filterable ${statusFilter === 'escalated' ? 'stat-card--active' : ''}`}
+            onClick={() => setStatusFilter('escalated')}
+          >
             <div>
               <p className="stat-card-label">Escalated</p>
               <p className="stat-card-value">{stats.escalated}</p>
               <p className="stat-card-sub">of {stats.total} total</p>
             </div>
             <Donut value={stats.escalated} total={stats.total} colorClass="donut-value--blue" />
-          </div>
+          </button>
 
-          <div className="stat-card">
+          <button
+            type="button"
+            className={`stat-card stat-card--filterable ${statusFilter === 'resolved' ? 'stat-card--active' : ''}`}
+            onClick={() => setStatusFilter('resolved')}
+          >
             <div>
               <p className="stat-card-label">Resolved</p>
               <p className="stat-card-value">{stats.resolved}</p>
               <p className="stat-card-sub">of {stats.total} total</p>
             </div>
             <Donut value={stats.resolved} total={stats.total} colorClass="donut-value--teal" />
-          </div>
+          </button>
         </section>
 
         <section className="panel">
           <div className="panel-header">
             <h2 className="panel-title">Recent Complaints</h2>
+            <form
+              className="complaints-search"
+              onSubmit={(e) => e.preventDefault()}
+            >
+              <input
+                type="text"
+                className="complaints-search-input"
+                placeholder="Search by description, complainant, or token…"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+              <button type="submit" className="complaints-search-btn">
+                Search
+              </button>
+            </form>
           </div>
 
           {actionError && <p className="form-message form-message-error panel-error">{actionError}</p>}
@@ -182,14 +245,14 @@ function LabInchargeHome() {
                 </tr>
               </thead>
               <tbody>
-                {complaints.length === 0 ? (
+                {visibleComplaints.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="panel-state-text">
-                      No complaints yet.
+                      {complaints.length === 0 ? 'No complaints yet.' : 'No complaints match your filters.'}
                     </td>
                   </tr>
                 ) : (
-                  complaints.map((complaint) => {
+                  visibleComplaints.map((complaint) => {
                     const meta = STATUS_META[complaint.status];
                     const actionable = canAct(complaint);
 

@@ -68,6 +68,31 @@
   color: #16181d;
 }
 
+.dashboard-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 16px;
+}
+
+.pc-search-link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid rgba(230, 106, 10, 0.35);
+  border-radius: 8px;
+  padding: 9px 18px;
+  background: rgba(230, 106, 10, 0.08);
+  color: #e66a0a;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: background 0.15s ease;
+}
+
+.pc-search-link-btn:hover {
+  background: rgba(230, 106, 10, 0.16);
+}
+
 /* ---------- Content ---------- */
 
 .dashboard-content {
@@ -94,6 +119,23 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+}
+
+.stat-card--filterable {
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.stat-card--filterable:hover {
+  border-color: #d0d4da;
+}
+
+.stat-card--active {
+  border-color: #e66a0a;
+  box-shadow: 0 0 0 2px rgba(230, 106, 10, 0.12);
 }
 
 .stat-card-label {
@@ -186,6 +228,64 @@
 
 .panel-link:hover {
   text-decoration: underline;
+}
+
+.complaints-search {
+  display: flex;
+  gap: 8px;
+}
+
+.complaints-search-input {
+  width: 260px;
+  background: rgba(0, 0, 0, 0.04);
+  border: 1px solid rgba(0, 0, 0, 0.08);
+  border-radius: 8px;
+  padding: 9px 12px;
+  font-size: 13px;
+  color: #16181d;
+  outline: none;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.complaints-search-input::placeholder {
+  color: #9aa0a8;
+}
+
+.complaints-search-input:focus {
+  border-color: #e66a0a;
+  background: rgba(0, 0, 0, 0.02);
+}
+
+.complaints-search-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 9px 16px;
+  background: #e66a0a;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.complaints-search-btn:hover {
+  background: #d05f09;
+}
+
+@media (max-width: 720px) {
+  .panel-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .complaints-search-input {
+    width: 100%;
+  }
+
+  .complaints-search {
+    width: 100%;
+  }
 }
 
 /* ---------- Table ---------- */

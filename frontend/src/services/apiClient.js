@@ -18,12 +18,25 @@ apiClient.interceptors.request.use((config) => {
 // request; if the refresh itself fails, give up so the caller can redirect to login.
 let refreshPromise = null;
 
+// These endpoints legitimately 401 for reasons unrelated to session expiry (wrong
+// password, wrong OTP, etc.) — a refresh attempt there just replaces the real error
+// with a confusing "Refresh token missing" one, since no session exists yet.
+const AUTH_ENDPOINTS = [
+  '/auth/login',
+  '/auth/register',
+  '/auth/verify-email',
+  '/auth/verify-login-otp',
+  '/auth/resend-otp',
+  '/auth/refresh-token',
+];
+
 apiClient.interceptors.response.use(
   (response) => response,
   async (error) => {
     const { config, response } = error;
+    const isAuthEndpoint = AUTH_ENDPOINTS.some((p) => config.url?.includes(p));
 
-    if (response?.status !== 401 || config._retried || config.url?.includes('/auth/refresh-token')) {
+    if (response?.status !== 401 || config._retried || isAuthEndpoint) {
       return Promise.reject(error);
     }
     config._retried = true;

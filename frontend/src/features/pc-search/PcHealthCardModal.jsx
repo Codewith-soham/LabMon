@@ -34,6 +34,14 @@ function PcHealthCardModal({ pc, onClose }) {
 
           <div className="detail-meta-grid">
             <div>
+              <p className="field-label">Department</p>
+              <p className="detail-value">{pc.department?.name || '—'}</p>
+            </div>
+            <div>
+              <p className="field-label">Lab</p>
+              <p className="detail-value">{pc.lab?.name || '—'}</p>
+            </div>
+            <div>
               <p className="field-label">CPU</p>
               <p className="detail-value">{pc.config?.cpu || '—'}</p>
             </div>

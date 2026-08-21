@@ -220,11 +220,11 @@ function PcSearchPage() {
               <thead>
                 <tr>
                   <th>Dead Stock No.</th>
+                  <th>Department</th>
+                  <th>Lab</th>
                   <th>CPU</th>
                   <th>RAM</th>
-                  <th>Disk</th>
                   <th>OS</th>
-                  <th>Software</th>
                   <th>Warranty</th>
                 </tr>
               </thead>
@@ -245,13 +245,11 @@ function PcSearchPage() {
                     return (
                       <tr key={pc._id} onClick={() => setSelectedPc(pc)}>
                         <td className="cell-description">{pc.deadStockNo}</td>
+                        <td className="cell-muted">{pc.department?.name || '—'}</td>
+                        <td className="cell-muted">{pc.lab?.name || '—'}</td>
                         <td className="cell-muted">{pc.config?.cpu || '—'}</td>
                         <td className="cell-muted">{pc.config?.ram || '—'}</td>
-                        <td className="cell-muted">{pc.config?.disk || '—'}</td>
                         <td className="cell-muted">{pc.config?.os || '—'}</td>
-                        <td className="cell-muted">
-                          {pc.config?.software?.length ? pc.config.software.join(', ') : '—'}
-                        </td>
                         <td>
                           <span className={`status-pill status-pill--${meta.modifier}`}>
                             <span className="status-dot" />

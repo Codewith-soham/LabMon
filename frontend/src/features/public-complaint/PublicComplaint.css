@@ -58,6 +58,16 @@
   text-decoration: underline;
 }
 
+.pc-confirm-box {
+  background: rgba(20, 163, 131, 0.1);
+  border: 1px solid rgba(20, 163, 131, 0.3);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: #0f6e59;
+  margin: -8px 0 16px;
+}
+
 .token-display {
   background: rgba(230, 106, 10, 0.1);
   border: 1px solid rgba(230, 106, 10, 0.3);

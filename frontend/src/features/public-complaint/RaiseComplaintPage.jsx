@@ -4,6 +4,7 @@ import './PublicComplaint.css';
 import '../auth/AuthPage.css';
 import bgImage from '../../assets/college-bg.jpg';
 import { raiseComplaint } from '../../services/complaintService';
+import { lookupPc } from '../../services/pcService';
 import { ROUTES } from '../../constants/routes';
 
 const INITIAL_FORM = {
@@ -18,9 +19,30 @@ function RaiseComplaintPage() {
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [token, setToken] = useState('');
+  const [pcInfo, setPcInfo] = useState(null);
+  const [pcCheckError, setPcCheckError] = useState('');
+  const [checkingPc, setCheckingPc] = useState(false);
 
   const updateField = (field) => (e) => {
     setForm((prev) => ({ ...prev, [field]: e.target.value }));
+    if (field === 'deadStockNo') {
+      setPcInfo(null);
+      setPcCheckError('');
+    }
+  };
+
+  const handleDeadStockBlur = async () => {
+    const value = form.deadStockNo.trim();
+    if (!value) return;
+    setCheckingPc(true);
+    try {
+      const res = await lookupPc(value);
+      setPcInfo(res.data?.data || null);
+    } catch (err) {
+      setPcCheckError(err.response?.data?.message || 'PC not found.');
+    } finally {
+      setCheckingPc(false);
+    }
   };
 
   const handleSubmit = async (e) => {
@@ -29,9 +51,9 @@ function RaiseComplaintPage() {
     setSubmitting(true);
     try {
       const res = await raiseComplaint({
-        deadStockNo: form.deadStockNo,
-        description: form.description,
-        raisedBy: { name: form.name, contact: form.contact },
+        deadStockNo: form.deadStockNo.trim(),
+        description: form.description.trim(),
+        raisedBy: { name: form.name.trim(), contact: form.contact.trim() },
       });
       setToken(res.data?.data?.token || '');
     } catch (err) {
@@ -45,6 +67,8 @@ function RaiseComplaintPage() {
     setForm(INITIAL_FORM);
     setToken('');
     setError('');
+    setPcInfo(null);
+    setPcCheckError('');
   };
 
   return (
@@ -93,8 +117,18 @@ function RaiseComplaintPage() {
               placeholder="e.g. DS-1023"
               value={form.deadStockNo}
               onChange={updateField('deadStockNo')}
+              onBlur={handleDeadStockBlur}
               required
             />
+
+            {checkingPc && <p className="form-message">Checking PC…</p>}
+            {pcInfo && (
+              <div className="pc-confirm-box">
+                ✓ PC found — Department: <strong>{pcInfo.department?.name || 'Unknown'}</strong> · Lab:{' '}
+                <strong>{pcInfo.lab?.name || 'Unknown'}</strong>
+              </div>
+            )}
+            {pcCheckError && <p className="form-message form-message-error">{pcCheckError}</p>}
 
             <label className="field-label" htmlFor="description">
               Issue Description

@@ -89,6 +89,12 @@ function PcSearchPage() {
       </header>
 
       <main className="dashboard-content">
+        <div className="dashboard-toolbar dashboard-toolbar--start">
+          <button type="button" className="back-btn" onClick={handleBack}>
+            ← Back
+          </button>
+        </div>
+
         <section className="panel">
           <form className="pc-search-form" onSubmit={handleSubmit}>
             <div className="pc-search-field">

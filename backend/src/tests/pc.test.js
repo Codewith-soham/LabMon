@@ -129,3 +129,52 @@ test("pc sync - returns 404 with the documented message for an unknown deadStock
   assert.equal(body.statusCode, 404)
   assert.equal(body.message, "PC not found. Check dead stock number.")
 })
+
+test("pc sync - creates a new PC when department and lab are provided for an unknown deadStockNo", async () => {
+  const suffix = randomSuffix()
+  const dept = await Dept.create({ name: `PC Sync Provision Dept ${suffix}`, code: `PSP${suffix.slice(0, 4)}` })
+  cleanupIds.dept.push(dept._id)
+
+  const deadStockNo = `NEW-PC-${suffix}`
+  const labName = `Auto Lab ${suffix}`
+
+  const { res, body } = await postJson("/api/v1/pc/sync", {
+    deadStockNo,
+    department: dept.name,
+    lab: labName,
+    config: {
+      cpu: "Intel i7",
+      ram: "32GB",
+      disk: "1TB SSD",
+      os: "Windows 11",
+      software: ["Chrome"]
+    }
+  })
+
+  assert.equal(res.status, 200)
+  assert.equal(body.success, true)
+  assert.equal(body.data.deadStockNo, deadStockNo)
+  assert.equal(body.data.department, String(dept._id))
+  assert.equal(body.data.config.cpu, "Intel i7")
+
+  cleanupIds.pc.push(body.data._id)
+
+  const createdLab = await Lab.findOne({ name: labName, department: dept._id })
+  assert.ok(createdLab, "expected the lab to be auto-created under the resolved department")
+  assert.equal(body.data.lab, String(createdLab._id))
+  cleanupIds.lab.push(createdLab._id)
+})
+
+test("pc sync - 404s with a clear message when the given department does not exist", async () => {
+  const suffix = randomSuffix()
+  const { res, body } = await postJson("/api/v1/pc/sync", {
+    deadStockNo: `NEW-PC-BADDEPT-${suffix}`,
+    department: `Nonexistent Department ${suffix}`,
+    lab: "Some Lab",
+    config: { cpu: "Intel i5" }
+  })
+
+  assert.equal(res.status, 404)
+  assert.equal(body.success, false)
+  assert.match(body.message, /Nonexistent Department/)
+})

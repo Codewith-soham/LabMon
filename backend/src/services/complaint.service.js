@@ -1,6 +1,9 @@
 import { nanoid } from "nanoid" //used to generate random ID's
 import { Complaint } from "../models/complaint.model.js"
 import { Pc } from "../models/pc.model.js"
+// Never referenced directly below, but escalate/resolve populate("lab", ...) on the
+// complaint doc, which requires the "Lab" schema to be registered with mongoose first.
+import "../models/lab.model.js"
 import { ApiError } from "../utils/ApiError.js"
 import { ROLES, COMPLAINT_STATUS, NEXT_LEVEL, STATUS_FOR_LEVEL } from "../config/constants.js"
 
@@ -13,7 +16,7 @@ const assertDeptAccess = (user, department, action) => {
 }
 
 const createComplaint = async({deadStockNo, description, raisedBy }) => {
-    const pc = await Pc.findOne({deadStockNo})
+    const pc = await Pc.findOne({deadStockNo: String(deadStockNo || "").trim()})
 
     if(!pc){
         throw new ApiError(404, "PC not found")

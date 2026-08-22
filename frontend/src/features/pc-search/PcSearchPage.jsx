@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import '../lab-incharge/LabInchargeHome.css';
+import '../complaints/ComplaintsDashboard.css';
 import '../auth/AuthPage.css';
 import './PcSearchPage.css';
 import PcHealthCardModal from './PcHealthCardModal';

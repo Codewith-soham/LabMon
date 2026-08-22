@@ -1,5 +1,5 @@
-// Integration tests for /api/v1/auth/register, /verify-email, /login and
-// /verify-login-otp. Runs the real Express app in-process against MONGO_URL
+// Integration tests for /api/v1/auth/register, /verify-email and /login.
+// Runs the real Express app in-process against MONGO_URL
 // from .env, using randomly generated users each run so tests don't collide
 // with each other or with real data. Created users are deleted again in
 // `after`. SMTP is not configured in tests, so mailer.js falls back to
@@ -79,11 +79,7 @@ function sleepPastCurrentSecond() {
 }
 
 async function loginAndVerify(payload) {
-    const loginOtpPromise = waitForOtp(payload.email, OTP_PURPOSE.LOGIN)
-    await postJson("/api/v1/auth/login", { email: payload.email, password: payload.password })
-    const otp = await loginOtpPromise
-
-    const { res, body } = await postJson("/api/v1/auth/verify-login-otp", { email: payload.email, otp })
+    const { res, body } = await postJson("/api/v1/auth/login", { email: payload.email, password: payload.password })
     const cookies = res.headers.getSetCookie()
 
     return {
@@ -192,39 +188,6 @@ test("resend-otp - rejects an email-verification resend for an already-verified 
     assert.equal(body.success, false)
 })
 
-test("resend-otp - rejects a login resend with no login already initiated (400)", async () => {
-    const { payload } = await registerAndVerifyUser()
-
-    const { res, body } = await postJson("/api/v1/auth/resend-otp", {
-        email: payload.email,
-        purpose: OTP_PURPOSE.LOGIN
-    })
-
-    assert.equal(res.status, 400)
-    assert.equal(body.success, false)
-})
-
-test("resend-otp - reissues a login otp once a login has been initiated, and the new otp verifies", async () => {
-    const { payload } = await registerAndVerifyUser()
-
-    await postJson("/api/v1/auth/login", { email: payload.email, password: payload.password })
-
-    const otpPromise = waitForOtp(payload.email, OTP_PURPOSE.LOGIN)
-    const { res, body } = await postJson("/api/v1/auth/resend-otp", {
-        email: payload.email,
-        purpose: OTP_PURPOSE.LOGIN
-    })
-    const otp = await otpPromise
-
-    assert.equal(res.status, 200)
-    assert.equal(body.success, true)
-
-    const { res: verifyRes, body: verifyBody } = await postJson("/api/v1/auth/verify-login-otp", { email: payload.email, otp })
-
-    assert.equal(verifyRes.status, 200)
-    assert.equal(verifyBody.data.user.email, payload.email)
-})
-
 test("resend-otp - rejects an unknown email with 404", async () => {
     const { res, body } = await postJson("/api/v1/auth/resend-otp", {
         email: `nobody.${crypto.randomBytes(6).toString("hex")}@labmon.test`,
@@ -259,21 +222,13 @@ test("login - rejects an unverified account with 403", async () => {
     assert.equal(body.success, false)
 })
 
-test("login - succeeds with correct credentials, sends a login OTP, and completes login only after verification", async () => {
+test("login - succeeds with correct credentials and issues auth cookies directly", async () => {
     const { payload } = await registerAndVerifyUser()
 
-    const loginOtpPromise = waitForOtp(payload.email, OTP_PURPOSE.LOGIN)
-    const { res: loginRes, body: loginBody } = await postJson("/api/v1/auth/login", {
+    const { res, body } = await postJson("/api/v1/auth/login", {
         email: payload.email,
         password: payload.password
     })
-
-    assert.equal(loginRes.status, 200)
-    assert.equal(loginBody.success, true)
-
-    const otp = await loginOtpPromise
-
-    const { res, body } = await postJson("/api/v1/auth/verify-login-otp", { email: payload.email, otp })
     const cookies = res.headers.getSetCookie()
 
     assert.equal(res.status, 200)
@@ -282,17 +237,6 @@ test("login - succeeds with correct credentials, sends a login OTP, and complete
     assert.ok(cookies.some((c) => c.startsWith("accessToken=")))
     assert.ok(cookies.some((c) => c.startsWith("refreshToken=")))
     assert.ok(cookies.every((c) => /HttpOnly/i.test(c)))
-})
-
-test("verify-login-otp - rejects an incorrect OTP with 400", async () => {
-    const { payload } = await registerAndVerifyUser()
-
-    await postJson("/api/v1/auth/login", { email: payload.email, password: payload.password })
-
-    const { res, body } = await postJson("/api/v1/auth/verify-login-otp", { email: payload.email, otp: "000000" })
-
-    assert.equal(res.status, 400)
-    assert.equal(body.success, false)
 })
 
 test("login - rejects an incorrect password with 401", async () => {

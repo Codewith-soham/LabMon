@@ -26,8 +26,7 @@ export const STATUS_FOR_LEVEL = {
 }
 
 export const OTP_PURPOSE = {
-    EMAIL_VERIFICATION: "emailVerification",
-    LOGIN: "login"
+    EMAIL_VERIFICATION: "emailVerification"
 }
 
 export const OTP_EXPIRY_MINUTES = 10

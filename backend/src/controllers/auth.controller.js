@@ -1,4 +1,4 @@
-import {registerUser, verifyEmailOtp, resendOtp, loginUser, verifyLoginOtp, refreshAccessToken, logoutUser, getCurrentUser} from "../services/auth.service.js"
+import {registerUser, verifyEmailOtp, resendOtp, loginUser, refreshAccessToken, logoutUser, getCurrentUser} from "../services/auth.service.js"
 import {asyncHandler} from "../utils/asyncHandler.js"
 import {ApiResponse} from "../utils/ApiResponse.js"
 import {ApiError} from "../utils/ApiError.js"
@@ -34,14 +34,7 @@ const resend = asyncHandler(async(req,res) => {
 })
 
 const login = asyncHandler(async(req,res) => {
-    const result = await loginUser(req.body)
-
-    return res.status(200).json(new ApiResponse(200, result, "OTP sent to your email, please verify to complete login"))
-})
-
-const verifyLogin = asyncHandler(async(req,res) => {
-    const {email, otp} = req.body
-    const {user, accessToken, refreshToken} = await verifyLoginOtp({email, otp})
+    const {user, accessToken, refreshToken} = await loginUser(req.body)
 
     return res
         .status(200)
@@ -88,4 +81,4 @@ const me = asyncHandler(async(req,res) => {
     return res.status(200).json(new ApiResponse(200, {user}, "Current user fetched"))
 })
 
-export { register, verifyEmail, resend, login, verifyLogin, refresh, logout, me }
+export { register, verifyEmail, resend, login, refresh, logout, me }

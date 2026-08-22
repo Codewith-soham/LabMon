@@ -121,17 +121,8 @@ const resendOtp = async({email, purpose}) => {
         throw new ApiError(404, "User not found")
     }
 
-    if(purpose === OTP_PURPOSE.EMAIL_VERIFICATION){
-        if(user.isEmailVerified){
-            throw new ApiError(400, "Email is already verified")
-        }
-    }else{
-        //login OTPs are only resendable if a login was already initiated with
-        //the correct password - otherwise anyone could get a fresh login otp
-        //for any email without ever proving they know the password
-        if(user.otpPurpose !== OTP_PURPOSE.LOGIN){
-            throw new ApiError(400, "No pending login to resend an otp for")
-        }
+    if(user.isEmailVerified){
+        throw new ApiError(400, "Email is already verified")
     }
 
     await issueOtp(user, purpose)
@@ -158,38 +149,6 @@ const loginUser = async({email, password}) => {
     if(!user.isEmailVerified){
         throw new ApiError(403, "Please verify your email before logging in")
     }
-
-    //credentials are correct, but login only completes once the otp is verified
-    await issueOtp(user, OTP_PURPOSE.LOGIN)
-
-    return {email: user.email}
-}
-
-const verifyLoginOtp = async({email, otp}) => {
-
-    const user = await User.findOne({email}).select("+otp +otpExpiry +otpPurpose")
-
-    if(!user){
-        throw new ApiError(401, "Invalid email or OTP")
-    }
-
-    if(user.otpPurpose !== OTP_PURPOSE.LOGIN || !user.otp || !user.otpExpiry){
-        throw new ApiError(400, "No pending login otp for this account")
-    }
-
-    if(user.otpExpiry < new Date()){
-        throw new ApiError(400, "OTP has expired, please login again")
-    }
-
-    const isOtpValid = await compareOtp(otp, user.otp)
-
-    if(!isOtpValid){
-        throw new ApiError(400, "Invalid OTP")
-    }
-
-    user.otp = undefined
-    user.otpExpiry = undefined
-    user.otpPurpose = undefined
 
     //issue tokens
     const accessToken = generateAccessToken(user)
@@ -275,7 +234,6 @@ export {
     verifyEmailOtp,
     resendOtp,
     loginUser,
-    verifyLoginOtp,
     refreshAccessToken,
     logoutUser,
     getCurrentUser

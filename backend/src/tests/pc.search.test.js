@@ -140,9 +140,9 @@ function waitForOtp(email, purpose) {
     })
 }
 
-// registers, verifies email, logs in, verifies the login otp, and returns
-// the resulting access token as a plain string (ready for an Authorization
-// header, same as the accessToken cookie used in auth.test.js's logout test)
+// registers, verifies email, logs in, and returns the resulting access token
+// as a plain string (ready for an Authorization header, same as the
+// accessToken cookie used in auth.test.js's logout test)
 async function registerLoginAndGetToken(overrides = {}) {
     const payload = randomUser(overrides)
 
@@ -153,11 +153,7 @@ async function registerLoginAndGetToken(overrides = {}) {
     const emailOtp = await emailOtpPromise
     await postJson("/api/v1/auth/verify-email", { email: payload.email, otp: emailOtp })
 
-    const loginOtpPromise = waitForOtp(payload.email, OTP_PURPOSE.LOGIN)
-    await postJson("/api/v1/auth/login", { email: payload.email, password: payload.password })
-    const loginOtp = await loginOtpPromise
-
-    const { res, body } = await postJson("/api/v1/auth/verify-login-otp", { email: payload.email, otp: loginOtp })
+    const { res, body } = await postJson("/api/v1/auth/login", { email: payload.email, password: payload.password })
     assert.equal(res.status, 200, `setup: login failed for ${payload.email}: ${JSON.stringify(body)}`)
 
     return extractCookie(res.headers.getSetCookie(), "accessToken")

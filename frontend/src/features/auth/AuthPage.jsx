@@ -91,10 +91,15 @@ function AuthPage() {
           role: form.role,
           department: departmentRequired ? form.department : null,
         });
+        setStep('otp');
       } else {
-        await login({ email: form.email, password: form.password });
+        const res = await login({ email: form.email, password: form.password });
+        const user = res.data?.data?.user ?? null;
+        if (user) {
+          setUser(user);
+        }
+        navigate(HOME_ROUTE_BY_ROLE[user?.role] || ROUTES.LOGIN, { replace: true });
       }
-      setStep('otp');
     } catch (err) {
       setError(err.response?.data?.message || 'Something went wrong. Please try again.');
     } finally {
@@ -102,19 +107,11 @@ function AuthPage() {
     }
   };
 
-  const handleOtpVerified = (user) => {
-    if (isSignup) {
-      setStep('form');
-      setActiveTab('login');
-      setForm(INITIAL_FORM);
-      setInfo('Email verified. You can now sign in.');
-      return;
-    }
-
-    if (user) {
-      setUser(user);
-    }
-    navigate(HOME_ROUTE_BY_ROLE[user?.role] || ROUTES.LOGIN, { replace: true });
+  const handleOtpVerified = () => {
+    setStep('form');
+    setActiveTab('login');
+    setForm(INITIAL_FORM);
+    setInfo('Email verified. You can now sign in.');
   };
 
   const handleOtpBack = () => {
@@ -157,13 +154,7 @@ function AuthPage() {
         )}
 
         {step === 'otp' && (
-          <OtpVerification
-            email={form.email}
-            password={form.password}
-            purpose={isSignup ? 'emailVerification' : 'login'}
-            onVerified={handleOtpVerified}
-            onBack={handleOtpBack}
-          />
+          <OtpVerification email={form.email} onVerified={handleOtpVerified} onBack={handleOtpBack} />
         )}
 
         {step === 'form' && (

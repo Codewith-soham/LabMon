@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import OtpInput from '../../components/common/OtpInput';
-import { login, resendOtp, verifyEmailOtp, verifyLoginOtp } from '../../services/authService';
+import { resendOtp, verifyEmailOtp } from '../../services/authService';
 
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 30;
 
-function OtpVerification({ email, password, purpose, onVerified, onBack }) {
+function OtpVerification({ email, onVerified, onBack }) {
   const [otp, setOtp] = useState('');
   const [status, setStatus] = useState('idle');
   const [error, setError] = useState('');
@@ -31,15 +31,9 @@ function OtpVerification({ email, password, purpose, onVerified, onBack }) {
     setVerifying(true);
     setError('');
     try {
-      let user = null;
-      if (purpose === 'emailVerification') {
-        await verifyEmailOtp({ email, otp });
-      } else {
-        const res = await verifyLoginOtp({ email, otp });
-        user = res.data?.data?.user ?? null;
-      }
+      await verifyEmailOtp({ email, otp });
       setStatus('success');
-      setTimeout(() => onVerified(user), 500);
+      setTimeout(() => onVerified(), 500);
     } catch (err) {
       setStatus('error');
       setError(err.response?.data?.message || 'Invalid OTP. Please try again.');
@@ -57,11 +51,7 @@ function OtpVerification({ email, password, purpose, onVerified, onBack }) {
     setResending(true);
     setError('');
     try {
-      if (purpose === 'login') {
-        await login({ email, password });
-      } else {
-        await resendOtp({ email, purpose });
-      }
+      await resendOtp({ email, purpose: 'emailVerification' });
       setCooldown(RESEND_COOLDOWN_SECONDS);
       setOtp('');
       setStatus('idle');

@@ -140,9 +140,30 @@ const trackComplaint = async(token) => {
     return complaint
 }
 
-//will get complaints according to their scope of department (if IT -> will recieve IT complaints)
-const getComplaints = async({...scope}) => {
-    const complaints = await Complaint.find({...scope })
+// admin sees everything; labIncharge sees their department's whole queue;
+// hod/deanInfra only see complaints currently escalated to their level (department-
+// scoped for hod, across all departments for deanInfra) - a complaint that hasn't
+// reached them yet, or that has since moved past them, is not in their view
+const buildComplaintScope = (user) => {
+    if (user.role === ROLES.ADMIN) {
+        return {}
+    }
+
+    if (user.role === ROLES.DEAN_INFRA) {
+        return { currentLevel: ROLES.DEAN_INFRA }
+    }
+
+    if (user.role === ROLES.HOD) {
+        return { department: user.department, currentLevel: ROLES.HOD }
+    }
+
+    return { department: user.department }
+}
+
+const getComplaints = async(user) => {
+    const scope = buildComplaintScope(user)
+
+    const complaints = await Complaint.find(scope)
         .sort({createdAt: -1}) //will get complaints in descending order
         .populate("lab", "name")
         .populate("history.by", "name")

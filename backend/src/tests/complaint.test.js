@@ -276,15 +276,56 @@ test("list complaints - a labIncharge only sees complaints from their own depart
     assert.ok(body.data.some((c) => c._id === ownComplaint.data._id))
 })
 
-test("list complaints - deanInfra sees complaints across all departments", async () => {
-    const { pc } = await makePc()
+test("list complaints - hod does not see a complaint still at labIncharge level", async () => {
+    const { pc, dept } = await makePc()
     const { body: created } = await raiseComplaint(pc)
 
-    const token = tokenFor({ role: ROLES.DEAN_INFRA, department: null })
+    const token = tokenFor({ role: ROLES.HOD, department: dept._id })
     const { res, body } = await getJson("/api/v1/complaint", token)
 
     assert.equal(res.status, 200)
-    assert.equal(body.success, true)
+    assert.ok(body.data.every((c) => c._id !== created.data._id))
+})
+
+test("list complaints - hod sees a complaint once it is escalated to them, across their own department only", async () => {
+    const { pc, dept } = await makePc()
+    const { body: created } = await raiseComplaint(pc)
+    const inchargeToken = tokenFor({ role: ROLES.LAB_INCHARGE, department: dept._id })
+    await patchJson(`/api/v1/complaint/${created.data._id}/escalate`, {}, inchargeToken)
+
+    const hodToken = tokenFor({ role: ROLES.HOD, department: dept._id })
+    const { res, body } = await getJson("/api/v1/complaint", hodToken)
+
+    assert.equal(res.status, 200)
+    assert.ok(body.data.some((c) => c._id === created.data._id))
+    assert.ok(body.data.every((c) => c.department === String(dept._id)))
+})
+
+test("list complaints - deanInfra does not see a complaint still at hod level", async () => {
+    const { pc, dept } = await makePc()
+    const { body: created } = await raiseComplaint(pc)
+    const inchargeToken = tokenFor({ role: ROLES.LAB_INCHARGE, department: dept._id })
+    await patchJson(`/api/v1/complaint/${created.data._id}/escalate`, {}, inchargeToken)
+
+    const deanToken = tokenFor({ role: ROLES.DEAN_INFRA, department: null })
+    const { res, body } = await getJson("/api/v1/complaint", deanToken)
+
+    assert.equal(res.status, 200)
+    assert.ok(body.data.every((c) => c._id !== created.data._id))
+})
+
+test("list complaints - deanInfra sees a complaint once escalated to them, across all departments", async () => {
+    const { pc, dept } = await makePc()
+    const { body: created } = await raiseComplaint(pc)
+    const inchargeToken = tokenFor({ role: ROLES.LAB_INCHARGE, department: dept._id })
+    const hodToken = tokenFor({ role: ROLES.HOD, department: dept._id })
+    await patchJson(`/api/v1/complaint/${created.data._id}/escalate`, {}, inchargeToken)
+    await patchJson(`/api/v1/complaint/${created.data._id}/escalate`, {}, hodToken)
+
+    const deanToken = tokenFor({ role: ROLES.DEAN_INFRA, department: null })
+    const { res, body } = await getJson("/api/v1/complaint", deanToken)
+
+    assert.equal(res.status, 200)
     assert.ok(body.data.some((c) => c._id === created.data._id))
 })
 

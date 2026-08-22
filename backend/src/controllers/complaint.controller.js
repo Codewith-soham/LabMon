@@ -37,7 +37,7 @@ const track = asyncHandler(async(req,res) => {
 })
 
 const list = asyncHandler(async(req,res) => {
-    const complaintList = await getComplaints(req.scope)
+    const complaintList = await getComplaints(req.user)
 
     return res.status(200).json(new ApiResponse(200, complaintList, "Complaints fetched"))
 })

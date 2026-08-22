@@ -25,7 +25,6 @@ const AUTH_ENDPOINTS = [
   '/auth/login',
   '/auth/register',
   '/auth/verify-email',
-  '/auth/verify-login-otp',
   '/auth/resend-otp',
   '/auth/refresh-token',
 ];

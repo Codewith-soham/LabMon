@@ -6,12 +6,14 @@ already exists at `agent/collector.py`. See [`phases.md`](./phases.md) Phase 2.
 
 ## What it does
 
-```
-run collector.py
-  -> prompts on stdin: "Enter Dead Stock Number for this PC: "
-  -> collects cpu / ram / disk / os / installed software
-  -> POSTs { deadStockNo, config: {...} } to {LABMON_BACKEND_URL}/api/v1/pc/sync
-  -> prints the JSON response, or the error, and exits
+```mermaid
+flowchart TD
+    Start(["python collector.py"]) --> Prompt["Prompt on stdin:\n'Enter Dead Stock Number for this PC:'"]
+    Prompt --> Collect["Collect cpu / ram / disk / os /\ninstalled software (Windows registry)"]
+    Collect --> Post["POST { deadStockNo, config }\nto {LABMON_BACKEND_URL}/api/v1/pc/sync"]
+    Post --> Ok{"2xx response?"}
+    Ok -- Yes --> Print["Print JSON response, exit 0"]
+    Ok -- No --> Fail["Print 'Sync failed: {exc}', exit 1"]
 ```
 
 It is a manually-run CLI script (`python agent/collector.py`), not a background service
@@ -34,8 +36,10 @@ values) — running the agent against a local backend requires explicitly settin
 ## Collection functions
 
 ```python
-collect_cpu()      -> platform.processor() + psutil.cpu_freq().max (GHz) + psutil.cpu_count()
-                       e.g. "Intel64 Family 6 ... @ 3.60GHz (8 cores)"
+collect_cpu()      -> Windows: registry ProcessorNameString + psutil.cpu_count()
+                       e.g. "Intel(R) Core(TM) i7-9700K CPU @ 3.60GHz (8 cores)"
+                       Non-Windows / registry read failure: falls back to
+                       platform.processor() + psutil.cpu_freq().max (GHz) + cpu_count()
 collect_ram()       -> psutil.virtual_memory().total, formatted as "{X.X} GB"
 collect_disk()      -> psutil.disk_usage("C:\\" on Windows, else "/").total, as "{X.X} GB"
 collect_os()        -> f"{platform.system()} {platform.release()} ({platform.version()})"

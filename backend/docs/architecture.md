@@ -2,11 +2,11 @@
 
 ## Entry point chain
 
-```
-server.js
-  -> loads .env (dotenv)
-  -> connectDB()                  (src/config/db.config.js)
-  -> app.listen(PORT)              app itself is built in src/app.js
+```mermaid
+flowchart LR
+    A["server.js"] -->|"loads .env (dotenv)"| B["connectDB()\nsrc/config/db.config.js"]
+    B -->|"connection established"| C["app.listen(PORT)"]
+    C -->|"app instance built by"| D["src/app.js\n(Express app)"]
 ```
 
 `src/app.js` builds and exports the Express instance. It does not call `listen` itself —
@@ -16,6 +16,18 @@ port (used by `src/tests/*.test.js`).
 ## Middleware stack (global, in `app.js`)
 
 Applied in this order, to every request:
+
+```mermaid
+flowchart TD
+    Req(["Incoming request"]) --> M1["helmet()\nsecurity headers"]
+    M1 --> M2["cors({ origin: CORS_ORIGIN, credentials: true })"]
+    M2 --> M3["express.json({ limit: '10mb' })"]
+    M3 --> M4["express.urlencoded({ extended: true, limit: '10mb' })"]
+    M4 --> M5["cookieParser()\npopulates req.cookies"]
+    M5 --> M6["morgan('dev')\nrequest logging"]
+    M6 --> Routers["Mounted routers\n(auth / pc / complaint / dept)"]
+    Routers --> EH["errorHandler\n(last, catches thrown ApiError)"]
+```
 
 1. `helmet()` — sets security-related HTTP headers.
 2. `cors({ origin: CORS_ORIGIN, credentials: true })` — allows the configured frontend
@@ -38,8 +50,11 @@ app.use("api/v1/complaint", complaintRouter)   // missing leading "/" — see kn
 
 ## Layering convention
 
-```
-routes  ->  controllers  ->  services  ->  models
+```mermaid
+flowchart LR
+    R["Routes\n(HTTP method + path + middleware)"] --> C["Controllers\n(asyncHandler-wrapped)"]
+    C --> S["Services\n(business logic, ApiError)"]
+    S --> M["Models\n(Mongoose schemas)"]
 ```
 
 - **Routes** (`src/routes/`) wire an HTTP method + path to a controller function, and
@@ -62,21 +77,33 @@ business logic — both of those only happen in `src/services/`.
 
 ## Request lifecycle example: escalating a complaint
 
-```
-PATCH /api/v1/complaint/:id/escalate
-  -> auth middleware            verifies JWT, sets req.user = { id, role, department }
-  -> roleCheck(LAB_INCHARGE,HOD) 403s if req.user.role isn't one of these
-  -> escalateComplaint controller
-       -> validates :id is a Mongo ObjectId, else 400
-       -> calls escalateComplaintService(id, req.user)
-            -> loads Complaint, 404 if missing
-            -> 400 if already Resolved
-            -> 403 if req.user not admin and department mismatch
-            -> 403 if req.user.role !== complaint.currentLevel
-            -> looks up NEXT_LEVEL[currentLevel] (constants.js); 400 if undefined (already at top)
-            -> mutates currentLevel/status, pushes a history[] entry, saves
-       -> wraps result in ApiResponse(200, complaint, ...)
-  -> errorHandler catches any ApiError thrown along the way and converts to JSON
+```mermaid
+sequenceDiagram
+    participant Client
+    participant Auth as auth middleware
+    participant Role as roleCheck(LAB_INCHARGE, HOD)
+    participant Ctrl as escalateComplaint controller
+    participant Svc as escalateComplaintService
+    participant DB as Complaint (Mongo)
+
+    Client->>Auth: PATCH /api/v1/complaint/:id/escalate
+    Auth->>Auth: verify JWT, set req.user = { id, role, department }
+    Auth->>Role: forward request
+    Role-->>Client: 403 if req.user.role not in {LAB_INCHARGE, HOD}
+    Role->>Ctrl: forward request
+    Ctrl->>Ctrl: validate :id is a Mongo ObjectId (else 400)
+    Ctrl->>Svc: escalateComplaintService(id, req.user)
+    Svc->>DB: findById(id)
+    DB-->>Svc: complaint or null
+    Svc-->>Ctrl: 404 if missing
+    Svc-->>Ctrl: 400 if status already Resolved
+    Svc-->>Ctrl: 403 if not admin/deanInfra and department mismatch
+    Svc-->>Ctrl: 403 if req.user.role !== complaint.currentLevel
+    Svc-->>Ctrl: 400 if NEXT_LEVEL[currentLevel] undefined (top of chain)
+    Svc->>DB: mutate currentLevel/status, push history[], save
+    Svc-->>Ctrl: updated complaint
+    Ctrl-->>Client: 200 ApiResponse(complaint)
+    Note over Auth,Ctrl: Any thrown ApiError is caught by the global errorHandler and converted to JSON
 ```
 
 Every layer that can fail throws `ApiError(statusCode, message)`; nothing writes to

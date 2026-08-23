@@ -37,33 +37,46 @@ The `User` model has a single shared set of OTP fields (`otp`, `otpExpiry`,
 (`emailVerification` | `login`, from `constants.js`). Only one OTP can be "live" on a
 user at a time — issuing a new one overwrites the old one's hash/expiry/purpose.
 
+```mermaid
+flowchart LR
+    subgraph A["Flow A: Registration"]
+        direction LR
+        A1(["POST /register"]) --> A2(["POST /verify-email"])
+    end
+    subgraph B["Flow B: Login"]
+        direction LR
+        B1(["POST /login"]) --> B2(["POST /verify-login-otp"])
+    end
+    A2 -.->|"account now usable for"| B1
+    B2 -->|"issues"| T["JWT access + refresh\n(httpOnly cookies)"]
+```
+
 ### Flow A: Registration + email verification
 
-```
-POST /register  { name, email, password, role, department }
-  -> registerUser()
-       -> 409 if a user with this email already exists
-       -> User.create({...})              password gets bcrypt-hashed by the
-                                            userSchema.pre("save") hook
-       -> issueOtp(user, OTP_PURPOSE.EMAIL_VERIFICATION)
-       -> strips password before returning
-  <- 201, user (no password), "Check your email for the verification OTP"
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as registerUser()
+    participant DB as User (Mongo)
+    participant Mail as sendOtpEmail
 
-POST /verify-email  { email, otp }
-  -> verifyEmailOtp()
-       -> 404 if no such user
-       -> 400 if user.isEmailVerified already true
-       -> 400 if otpPurpose isn't EMAIL_VERIFICATION, or otp/otpExpiry missing
-          (i.e. no pending verification — covers both "never registered an OTP" and
-          "OTP was already consumed/overwritten")
-       -> 400 if otpExpiry has passed ("please register again to get a new one" —
-          there is no separate "resend OTP" endpoint, see known-issues.md)
-       -> 400 if the submitted otp doesn't bcrypt-compare against the stored hash
-       -> sets isEmailVerified = true, clears otp/otpExpiry/otpPurpose, saves
-          with validateBeforeSave: false (skips full schema validation — needed
-          because otp/otpExpiry/otpPurpose are being set to undefined, and other
-          required fields aren't being touched)
-  <- 200, user (no password), "Email verified successfully"
+    Client->>API: POST /register { name, email, password, role, department }
+    API->>DB: check existing user by email
+    DB-->>API: 409 if already exists
+    API->>DB: User.create({...})  (password bcrypt-hashed by pre("save") hook)
+    API->>DB: issueOtp(user, OTP_PURPOSE.EMAIL_VERIFICATION)
+    API->>Mail: sendOtpEmail (plaintext OTP, only ever leaves via email)
+    API-->>Client: 201, user (no password), "Check your email for the verification OTP"
+
+    Client->>API: POST /verify-email { email, otp }
+    API->>DB: find user by email
+    DB-->>API: 404 if none
+    API->>API: 400 if isEmailVerified already true
+    API->>API: 400 if otpPurpose != EMAIL_VERIFICATION or otp/otpExpiry missing
+    API->>API: 400 if otpExpiry has passed
+    API->>API: 400 if otp fails bcrypt.compare against stored hash
+    API->>DB: isEmailVerified = true, clear otp/otpExpiry/otpPurpose\n(save with validateBeforeSave: false)
+    API-->>Client: 200, user (no password), "Email verified successfully"
 ```
 
 Note: `registerUser` does not enforce that `role`/`department` are consistent (e.g.
@@ -75,37 +88,40 @@ registration should be "Admin only."
 
 ### Flow B: Login (password check, then OTP, then tokens)
 
-```
-POST /login  { email, password }
-  -> loginUser()
-       -> 401 "Invalid email or password" if user not found
-            (deliberately the same message as a bad password — doesn't leak
-            whether the email exists)
-       -> 401 same message if user.comparePassword(password) fails
-            (userSchema.methods.comparePassword, bcrypt.compare under the hood)
-       -> 403 "Please verify your email before logging in" if !isEmailVerified
-       -> issueOtp(user, OTP_PURPOSE.LOGIN)     credentials were correct, but the
-                                                  login is NOT complete yet
-  <- 200, { email }, "OTP sent to your email, please verify to complete login"
-     (note: no tokens, no cookies set here — this is intentional, see below)
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as loginUser() / verifyLoginOtp()
+    participant DB as User (Mongo)
+    participant Mail as sendOtpEmail
 
-POST /verify-login-otp  { email, otp }
-  -> verifyLoginOtp()
-       -> 401 "Invalid email or OTP" if user not found
-            (again, same shape of message regardless of which part is wrong)
-       -> 400 if otpPurpose isn't LOGIN, or otp/otpExpiry missing
-       -> 400 if otpExpiry has passed ("please login again")
-       -> 400 "Invalid OTP" if bcrypt compare fails
-       -> clears otp/otpExpiry/otpPurpose (in memory; not saved until below)
-       -> generateAccessToken(user), generateRefreshToken(user)
-       -> user.refreshToken = bcrypt.hash(refreshToken, 10)   stores only a HASH
-          of the refresh token, not the token itself — so the DB can't be used
-          to replay a valid refresh token even if leaked
-       -> user.save({ validateBeforeSave: false })
-       -> strips password before returning
-  <- 200, { user }, "Login successful"
-     PLUS two httpOnly cookies set by the controller (see below)
+    Client->>API: POST /login { email, password }
+    API->>DB: find user by email
+    DB-->>API: 401 "Invalid email or password" if not found
+    API->>API: 401 same message if comparePassword() fails
+    API->>API: 403 "Please verify your email before logging in" if !isEmailVerified
+    API->>DB: issueOtp(user, OTP_PURPOSE.LOGIN)
+    API->>Mail: sendOtpEmail
+    API-->>Client: 200 { email }, "OTP sent..." — no tokens, no cookies yet
+
+    Client->>API: POST /verify-login-otp { email, otp }
+    API->>DB: find user by email
+    DB-->>API: 401 "Invalid email or OTP" if not found
+    API->>API: 400 if otpPurpose != LOGIN or otp/otpExpiry missing
+    API->>API: 400 if otpExpiry has passed
+    API->>API: 400 "Invalid OTP" if bcrypt compare fails
+    API->>API: clear otp/otpExpiry/otpPurpose (in memory)
+    API->>API: generateAccessToken(user), generateRefreshToken(user)
+    API->>DB: refreshToken = bcrypt.hash(refreshToken, 10); save
+    API-->>Client: 200 { user } + httpOnly accessToken/refreshToken cookies
 ```
+
+1. `POST /login` — validates credentials, issues an OTP, but does **not** create a
+   session (deliberately the same 401 message for "no such user" and "wrong password",
+   so a caller can't tell which part was wrong).
+2. `POST /verify-login-otp` — checks the OTP and only then mints tokens, hashing the
+   refresh token before storing it (so the DB can't be used to replay a valid refresh
+   token even if leaked), and strips the password before returning the user.
 
 `loginUser` and `verifyLoginOtp` are two separate service calls corresponding to two
 separate HTTP requests — the *password* check happens in `/login`, but the *session* is

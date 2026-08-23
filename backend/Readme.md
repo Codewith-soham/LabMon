@@ -85,20 +85,22 @@ history       [{ level, action, by: ObjectId -> User, at: Date }]
 
 ## Relationships
 
-```text
-Department 1 --- * Lab
-Department 1 --- * User (except deanInfra/admin)
-Department 1 --- * PC
-Lab        1 --- * PC
-PC         1 --- * Complaint
+```mermaid
+erDiagram
+    Department ||--o{ Lab : has
+    Department ||--o{ User : "has (except deanInfra/admin)"
+    Department ||--o{ PC : has
+    Lab ||--o{ PC : has
+    PC ||--o{ Complaint : receives
 ```
 
 ## Planned Architecture
 
-```text
-Python Agent -> Express API (/api/v1/pc/sync)
-React Frontend -> Express API (/api/v1/auth/*, /api/v1/complaint/*, /api/v1/pc/*)
-Express API -> MongoDB via Mongoose
+```mermaid
+flowchart LR
+    Agent(["Python Agent"]) -->|"/api/v1/pc/sync"| API["Express API"]
+    Frontend(["React Frontend"]) -->|"/api/v1/auth/*\n/api/v1/complaint/*\n/api/v1/pc/*"| API
+    API -->|"Mongoose"| DB[("MongoDB")]
 ```
 
 ## Planned API Surface
@@ -156,12 +158,28 @@ Express API -> MongoDB via Mongoose
 
 ### Complaint Status
 
+```mermaid
+stateDiagram-v2
+    [*] --> Open: raised (Lab Incharge)
+    Open --> Escalated_HOD: escalated to HOD
+    Escalated_HOD --> Escalated_Dean: escalated to Dean Infra
+    Open --> Resolved
+    Escalated_HOD --> Resolved
+    Escalated_Dean --> Resolved
+    Resolved --> [*]
+```
+
 - `Open` - Newly raised, with Lab Incharge
 - `Escalated_HOD` - Escalated to HOD
 - `Escalated_Dean` - Escalated to Dean Infra
 - `Resolved` - Closed
 
 ## Roadmap
+
+```mermaid
+flowchart LR
+    P1["1. Foundation"] --> P2["2. Python Agent"] --> P3["3. Health Card +\nComplaint Core"] --> P4["4. Role Dashboards"] --> P5["5. Search ✅"] --> P6["6. Security Hardening"] --> P7["7. Deployment"]
+```
 
 ### Phase 1: Foundation
 

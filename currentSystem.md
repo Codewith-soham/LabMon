@@ -13,6 +13,13 @@ A MERN-based lab PC health monitoring and complaint management system for colleg
 
 ## 2. Repo layout
 
+```mermaid
+flowchart LR
+    Agent(["agent/\nPython collector\n(functional, unpackaged)"]) -->|"POST /api/v1/pc/sync"| Backend
+    Frontend(["frontend/\nReact 19 + Vite\n(scaffolded, partial)"]) -->|"axios /api/v1/*"| Backend
+    Backend["backend/\nNode.js + Express + MongoDB\n(most complete piece)"] --> DB[("MongoDB")]
+```
+
 ```
 D:\labmon\
 ├── backend/     Node.js + Express + MongoDB (Mongoose) — most complete piece
@@ -30,14 +37,29 @@ Node/Express, ESM (`"type": "module"`), MongoDB via Mongoose. Layering: **routes
 Run from `backend/`: `npm run dev` (nodemon) or `npm start`. No test runner script wired to CI, but `npm test` runs Node's built-in test runner (`node --test src/tests/**/*.test.js`) against 5 test files (auth, complaint, healthcard, pc, pc.search).
 
 ### Domain model
+```mermaid
+erDiagram
+    Dept ||--o{ Lab : has
+    Dept ||--o{ User : "has (null for admin/deanInfra)"
+    Dept ||--o{ Pc : has
+    Lab ||--o{ Pc : has
+    Pc ||--o{ Complaint : receives
 ```
-Dept  1──* Lab
-Dept  1──* User   (null department for admin/deanInfra)
-Dept  1──* Pc
-Lab   1──* Pc
-Pc    1──* Complaint
+
+Roles: `admin`, `labIncharge`, `hod`, `deanInfra` (`src/config/constants.js`).
+
+```mermaid
+stateDiagram-v2
+    [*] --> Open
+    Open --> Escalated_HOD
+    Escalated_HOD --> Escalated_Dean
+    Open --> Resolved
+    Escalated_HOD --> Resolved
+    Escalated_Dean --> Resolved
+    Resolved --> [*]
 ```
-Roles: `admin`, `labIncharge`, `hod`, `deanInfra` (`src/config/constants.js`). Complaint `status`: `Open → Escalated_HOD → Escalated_Dean → Resolved`; `currentLevel` mirrors the escalation chain and excludes `admin`.
+
+Complaint `status`: `Open → Escalated_HOD → Escalated_Dean → Resolved`; `currentLevel` mirrors the escalation chain and excludes `admin`.
 
 ### API surface that actually exists today
 

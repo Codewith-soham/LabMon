@@ -25,10 +25,31 @@ UNINSTALL_KEYS = [
 ]
 
 
+def _collect_cpu_brand_windows():
+    """Reads the marketing CPU name (e.g. "Intel(R) Core(TM) i7-9700K CPU @
+    3.60GHz") from the registry. platform.processor() only returns the raw
+    "Intel64 Family 6 Model ..." identification string, which never contains
+    searchable model names like "i7"/"i5"/"Ryzen 5" — this is what makes CPU
+    search on the PC search page actually match real-world search terms.
+    """
+    try:
+        key = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, r"HARDWARE\DESCRIPTION\System\CentralProcessor\0")
+        with key:
+            name, _ = winreg.QueryValueEx(key, "ProcessorNameString")
+            return name.strip() if name else None
+    except OSError:
+        return None
+
+
 def collect_cpu():
+    cores = psutil.cpu_count(logical=True)
+
+    brand = _collect_cpu_brand_windows() if winreg is not None else None
+    if brand:
+        return f"{brand} ({cores} cores)"
+
     processor = platform.processor() or "Unknown CPU"
     freq = psutil.cpu_freq()
-    cores = psutil.cpu_count(logical=True)
     if freq:
         return f"{processor} @ {freq.max / 1000:.2f}GHz ({cores} cores)"
     return f"{processor} ({cores} cores)"

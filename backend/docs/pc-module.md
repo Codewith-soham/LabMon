@@ -2,6 +2,18 @@
 
 Covers `src/services/pc.service.js`, its endpoints in `src/routes/pc.route.js` / `src/controllers/pc.controller.js`, all mounted at `/api/v1/pc`, and operating on the `Pc` model (`src/models/pc.model.js`).
 
+## Endpoint overview
+
+```mermaid
+flowchart LR
+    Agent(["Python agent"]) -->|"POST /pc/sync\n(no auth)"| Sync["syncPcConfig"]
+    Staff(["Lab Incharge / HOD / Dean Infra"]) -->|"POST /pc/:id/health-card\n(auth + deptScope)"| Health["getPcHealthCard"]
+    Staff -->|"GET /pc/search\n(auth + roleCheck + deptScope)"| Search["searchPcs"]
+    Sync --> DB[("Pc collection")]
+    Health --> DB
+    Search --> DB
+```
+
 ## `syncPcConfig(payload)` -> `POST /api/v1/pc/sync`
 
 Agent-facing endpoint. No auth middleware yet (device-key auth is planned, not implemented).

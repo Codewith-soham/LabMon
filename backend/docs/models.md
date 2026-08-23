@@ -2,12 +2,46 @@
 
 Five Mongoose models. Relationships:
 
-```
-Dept  1---* Lab
-Dept  1---* User   (except admin/deanInfra, which have department: null)
-Dept  1---* Pc
-Lab   1---* Pc
-Pc    1---* Complaint
+```mermaid
+erDiagram
+    Dept ||--o{ Lab : "has"
+    Dept ||--o{ User : "has (null for admin/deanInfra)"
+    Dept ||--o{ Pc : "has"
+    Lab ||--o{ Pc : "has"
+    Pc ||--o{ Complaint : "receives"
+    Lab }o--|| User : "incharge (optional)"
+    User ||--o{ Complaint : "acts on (history[].by)"
+
+    Dept {
+        string name
+        string code
+    }
+    Lab {
+        string name
+        ObjectId department
+        ObjectId incharge
+    }
+    User {
+        string name
+        string email
+        string role
+        ObjectId department
+    }
+    Pc {
+        string deadStockNo
+        ObjectId department
+        ObjectId lab
+        object warranty
+        object config
+    }
+    Complaint {
+        string token
+        ObjectId pc
+        ObjectId department
+        ObjectId lab
+        string status
+        string currentLevel
+    }
 ```
 
 ## `Dept` — `src/models/department.model.js`

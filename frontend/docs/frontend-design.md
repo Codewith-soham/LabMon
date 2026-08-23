@@ -10,6 +10,24 @@ Reference for the "already built" look-and-feel: `features/lab-incharge/LabIncha
 should reuse this pattern (stat cards with donut charts, panel + table, detail modal
 reusing `AuthPage.css` classes) rather than inventing a new visual language.
 
+## Phase status at a glance
+
+```mermaid
+flowchart TD
+    P0["Phase 0: Auth Shell"]:::done --> P1["Phase 1: Lab Incharge Dashboard"]:::done
+    P1 --> P2["Phase 2: HOD Dashboard"]:::todo
+    P2 --> P3["Phase 3: Dean Infra Dashboard"]:::todo
+    P0 --> P4["Phase 4: PC Health Card + Search"]:::todo
+    P0 --> P5["Phase 5: Public Complaint Submission"]:::done
+    P1 --> P6["Phase 6: Admin"]:::blocked
+
+    classDef done fill:#2e7d32,color:#fff,stroke:none
+    classDef todo fill:#9e9e9e,color:#fff,stroke:none
+    classDef blocked fill:#c62828,color:#fff,stroke:none
+```
+
+Green = done, grey = not started, red = blocked on backend work.
+
 ## Phase 0: Auth Shell — Done
 
 Backend: `POST /auth/register`, `verify-email`, `resend-otp`, `login`, `verify-login-otp`,

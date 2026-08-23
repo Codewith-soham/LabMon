@@ -4,6 +4,20 @@ Four middleware modules exist. `auth` → `roleCheck`/`deptScope` are meant to r
 order on any protected route (auth must populate `req.user` before the other two can use
 it). `errorHandler` is global and mounted last in `app.js`.
 
+```mermaid
+flowchart LR
+    Req(["Request"]) --> Auth["auth\n(verifies JWT, sets req.user)"]
+    Auth -->|"401 if missing/invalid token"| Fail1(["errorHandler"])
+    Auth --> Role["roleCheck(...roles)\n(optional, route-specific)"]
+    Auth --> Scope["deptScope\n(optional, route-specific)"]
+    Role -->|"403 if role not allowed"| Fail1
+    Scope --> Handler["Route controller"]
+    Role --> Handler
+    Handler -->|"throws ApiError"| Fail1
+    Handler -->|"success"| Res(["ApiResponse"])
+    Fail1 --> ErrRes(["JSON error response"])
+```
+
 ## `auth` — `src/middlewares/auth.middleware.js`
 
 ```js

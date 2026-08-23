@@ -3,6 +3,19 @@
 `backend/Readme.md` lays out a 7-phase roadmap. This page cross-checks each phase against
 the actual code and git history (`git log --oneline`) as of 2026-08-13.
 
+```mermaid
+flowchart LR
+    P1["1. Foundation"]:::done --> P2["2. Python Agent"]:::done --> P3["3. Health Card +\nComplaint Core"]:::done --> P4["4. Role Dashboards"]:::todo --> P5["5. Search"]:::todo --> P6["6. Security\nHardening"]:::partial --> P7["7. Deployment"]:::todo
+
+    classDef done fill:#2e7d32,color:#fff,stroke:none
+    classDef todo fill:#9e9e9e,color:#fff,stroke:none
+    classDef partial fill:#f9a825,color:#fff,stroke:none
+```
+
+Green = done, amber = partial, grey = not started as of this snapshot — see
+[`currentSystem.md`](../../currentSystem.md) for a newer read on Phase 5, which has since
+shipped.
+
 ## Phase 1: Foundation
 
 **Planned:** MVC skeleton, all 5 Mongoose models, JWT auth, role and department scoping

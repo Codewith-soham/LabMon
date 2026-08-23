@@ -1,5 +1,28 @@
 # Complaint Module — public submission and escalation, in detail
 
+## Escalation state machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> Open: raiseComplaint()\ncurrentLevel = labIncharge
+    Open --> Escalated_HOD: escalate()\nby labIncharge
+    Escalated_HOD --> Escalated_Dean: escalate()\nby hod
+    Open --> Resolved: resolve()\nby labIncharge
+    Escalated_HOD --> Resolved: resolve()\nby hod
+    Escalated_Dean --> Resolved: resolve()\nby deanInfra
+    Resolved --> [*]
+
+    note right of Escalated_Dean
+        NEXT_LEVEL[deanInfra] is undefined
+        no further escalation possible
+    end note
+```
+
+`status` and `currentLevel` move together (`STATUS_FOR_LEVEL`/`NEXT_LEVEL` lookup
+tables in `constants.js`): `Open` ↔ `labIncharge`, `Escalated_HOD` ↔ `hod`,
+`Escalated_Dean` ↔ `deanInfra`. Resolution can happen from **any** level, not just the
+top — `currentLevel` simply freezes at whichever level closed it.
+
 Files involved:
 
 - `src/routes/complaint.route.js`
@@ -117,6 +140,22 @@ const complaint = await Complaint.create({
   account tying to it.
 
 ### `escalateComplaint(complaintId, user)`
+
+```mermaid
+flowchart TD
+    Start(["escalateComplaint(complaintId, user)"]) --> Exists{"Complaint\nexists?"}
+    Exists -- No --> E404["404 Complaint not found"]
+    Exists -- Yes --> Terminal{"status ==\nResolved?"}
+    Terminal -- Yes --> E400a["400 Cannot escalate\na resolved complaint"]
+    Terminal -- No --> Scope{"admin/deanInfra\nOR department matches?"}
+    Scope -- No --> E403a["403 Outside your department"]
+    Scope -- Yes --> Level{"user.role ==\ncurrentLevel?"}
+    Level -- No --> E403b["403 Only current level's\nincharge can escalate"]
+    Level -- Yes --> Next{"NEXT_LEVEL[currentLevel]\nexists?"}
+    Next -- No --> E400b["400 Already at highest level"]
+    Next -- Yes --> Mutate["currentLevel = next\nstatus = STATUS_FOR_LEVEL[next]\npush history[], save"]
+    Mutate --> Done(["200 updated complaint"])
+```
 
 ```js
 const complaint = await Complaint.findById(complaintId)

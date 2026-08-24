@@ -23,10 +23,12 @@ flowchart LR
 ```js
 const auth = (req, res, next) => {
     const authHeader = req.headers.authorization
-    if (!authHeader || !authHeader.startsWith("Bearer")) {
+    const headerToken = authHeader?.startsWith("Bearer") ? authHeader.split(" ")[1] : null
+    const token = headerToken || req.cookies?.accessToken
+
+    if (!token) {
         throw new ApiError(401, "Authentication required")
     }
-    const token = authHeader.split(" ")[1]
     try {
         const decoded = jwt.verify(token, process.env.JWT_ACCESS_TOKEN)
         req.user = decoded
@@ -37,7 +39,11 @@ const auth = (req, res, next) => {
 }
 ```
 
-- Reads `Authorization: Bearer <token>`. Missing header or wrong scheme → `401`.
+- Reads `Authorization: Bearer <token>` first; if that header is missing or not a
+  Bearer scheme, falls back to the `accessToken` httpOnly cookie set at login (see
+  [`auth-module.md`](./auth-module.md)) — either credential source works, so a
+  browser client relying purely on the cookie and an API client sending an explicit
+  header both authenticate the same way. Neither present → `401`.
 - Verifies the JWT against `JWT_ACCESS_TOKEN` (the same secret
   `generateAccessToken` in `tokenGeneration.js` signs with).
 - On success, sets `req.user` to the **decoded payload**, i.e. exactly
@@ -103,22 +109,25 @@ const deptScope = (req, res, next) => {
     confirms this — see `models.md`).
   - Everyone else (`labIncharge`, `hod`) gets `req.scope = { department:
     req.user.department }` — restricts to their own department only.
-- Consumed in two places: `pc.service.js`'s `getPcHealthCard(pcId, scope)` does
-  `Pc.findOne({ _id: pcId, ...scope })`, and `complaint.route.js`'s `GET /` (`list`)
-  route applies it before `complaint.service.js`'s `getComplaints(scope)` does
-  `Complaint.find({ ...scope })`. Spreading `{}` is a no-op filter (matches any
-  department); spreading `{ department: X }` narrows the match. On the PC route, if a
-  non-admin/non-Dean user requests a PC in another department, the `_id` matches but
-  `department` doesn't, so `findOne` returns `null` and the service throws `404 "Pc not
-  found"` — **not** a `403`. This is a deliberate (or at least consistent) choice:
-  out-of-scope resources look identical to nonexistent ones, avoiding confirming to a
-  caller that a specific `_id` exists in a department they can't see.
-- Still not used on the complaint `escalate`/`resolve` routes — `complaint.service.js`
-  does its own inline department check there instead (now bypassing for both `ADMIN` and
-  `DEAN_INFRA`, matching this middleware's treatment of those roles). This remains an
-  inconsistency worth unifying eventually: the same "is this admin/Dean-Infra/scoped-by-
-  department" logic exists in two different forms in two different layers (see
-  [`known-issues.md`](./known-issues.md)).
+- Consumed today by exactly one route: `pc.route.js`'s `POST /:id/health-card`, where
+  `pc.service.js`'s `getPcHealthCard(pcId, scope)` does `Pc.findOne({ _id: pcId,
+  ...scope })`. Spreading `{}` is a no-op filter (matches any department); spreading
+  `{ department: X }` narrows the match. If a non-admin/non-Dean user requests a PC in
+  another department, the `_id` matches but `department` doesn't, so `findOne` returns
+  `null` and the service throws `404 "Pc not found"` — **not** a `403`. This is a
+  deliberate (or at least consistent) choice: out-of-scope resources look identical to
+  nonexistent ones, avoiding confirming to a caller that a specific `_id` exists in a
+  department they can't see.
+- **Not** used on the complaint `list`/`escalate`/`resolve` routes. `list` computes its
+  own role/level-aware scope inside `complaint.service.js`'s `buildComplaintScope`
+  (department scoping alone isn't expressive enough there — HOD/Dean Infra additionally
+  need to see only complaints currently at *their* level); `escalate`/`resolve` do their
+  own inline `assertDeptAccess` check. All three (`deptScope`, `buildComplaintScope`,
+  `assertDeptAccess`) independently re-derive the same "admin/Dean-Infra are unscoped,
+  everyone else is department-locked" rule — behaviorally consistent, but three separate
+  places to keep in sync if that rule ever changes. See
+  [`complaint-module.md`](./complaint-module.md) and
+  [`known-issues.md`](./known-issues.md).
 
 ## `errorHandler` — `src/middlewares/error.middleware.js`
 
@@ -173,10 +182,12 @@ controller) reads both `req.params.id` and `req.scope`.
 
 ```js
 router.patch("/:id/escalate", auth, roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD), escalateComplaint)
-router.get("/", auth, deptScope, list)
+router.patch("/:id/resolve", auth, roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD, ROLES.DEAN_INFRA), resolveComplaint)
+router.get("/", auth, list)
 ```
 
-`escalate`/`resolve` use `roleCheck` instead of `deptScope` — the department check for
-those two happens inside the service layer instead of via middleware (see the
-`deptScope` section above). `list` is the one complaint route that does use `deptScope`,
-the same as the PC health-card route.
+None of the complaint routes use `deptScope` — `escalate`/`resolve` use `roleCheck` for
+the coarse "is this role allowed at all" check, then an inline department check inside
+the service layer; `list` computes its own role/level-aware scope entirely inside
+`complaint.service.js` (see the `deptScope` section above). `deptScope` middleware
+itself is only wired into the PC health-card route today.

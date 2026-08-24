@@ -22,10 +22,20 @@ The system also supports public complaint submission without login. Each complai
 
 ## Repository Status
 
-This repository currently contains the backend scaffold and database models.
+This repository now spans all three planned runtimes — backend, Python agent, and a
+partially-built React frontend — not just the backend scaffold.
 
-- Completed: Department, Lab, User, PC, and Complaint models; JWT auth (register/login/OTP verification/refresh/logout); role and department scoping middleware; PC sync and health-card endpoints; complaint raise/escalate/resolve/track/list endpoints; role-based PC search.
-- Next planned work: Department/Lab/User/PC admin CRUD endpoints, Python agent, React frontend, rate limiting/Helmet hardening, Dockerization/CI.
+- Completed: Department, Lab, User, PC, and Complaint models; JWT auth (register with
+  OTP email verification, plain-password login, refresh-token rotation, logout, resend-
+  OTP, session rehydration via `GET /me`); role and department scoping middleware; PC
+  sync (including first-time provisioning with department/lab), health-card, search, and
+  public lookup endpoints; complaint raise/escalate/resolve/track/list endpoints;
+  department listing; a functional (unpackaged) Python agent; a React frontend with
+  working auth screens, PC search, raise/track-complaint flows, and one fully-built
+  dashboard (Lab Incharge).
+- Next planned work: Admin CRUD for Department/Lab/User/PC, role-dashboard
+  aggregation/summary endpoints, agent device-key auth, rate limiting, Dockerization/CI.
+  See [`backend/docs/`](./docs/README.md) for the detailed, code-verified current state.
 
 ## Data Model
 
@@ -69,6 +79,9 @@ config        {
 }
 ```
 
+Indexed on `{ department: 1, lab: 1 }` and `{ "warranty.status": 1 }`, in addition to
+the implicit unique index on `deadStockNo`.
+
 ### Complaint
 
 ```text
@@ -103,45 +116,48 @@ flowchart LR
     API -->|"Mongoose"| DB[("MongoDB")]
 ```
 
-## Planned API Surface
+## API Surface
 
-### Auth
+### Auth (`/api/v1/auth`) — implemented
 
-- `POST /api/auth/register` - Admin only
-- `POST /api/auth/login` - Public
+- `POST /register` - Public today (roadmap: should become Admin only)
+- `POST /verify-email` - Public
+- `POST /resend-otp` - Public
+- `POST /login` - Public (password check, issues JWT cookies directly — no login-OTP step)
+- `POST /refresh-token` - Public (authenticates via the `refreshToken` cookie)
+- `POST /logout` - Auth required
+- `GET /me` - Auth required
 
-### Department / Lab / User / PC
+### Department (`/api/v1/dept`) — implemented (read-only)
 
-- `POST /api/departments` - Admin
-- `GET /api/departments` - Admin
-- `PUT /api/departments/:id` - Admin
-- `DELETE /api/departments/:id` - Admin
-- `POST /api/labs` - Admin
-- `GET /api/labs` - Admin
-- `PUT /api/labs/:id` - Admin
-- `DELETE /api/labs/:id` - Admin
-- `POST /api/users` - Admin
-- `GET /api/users` - Admin
-- `PUT /api/users/:id` - Admin
-- `DELETE /api/users/:id` - Admin
-- `POST /api/pcs` - Admin
-- `GET /api/pcs` - Admin
-- `PUT /api/pcs/:id` - Admin
-- `DELETE /api/pcs/:id` - Admin
+- `GET /` - Public, lightweight `{name, code}` list
 
-### PC Health
+### Department / Lab / User / PC admin CRUD — not yet implemented
 
-- `POST /api/v1/pc/sync` - Agent device key
-- `POST /api/v1/pc/:id/health-card` - Role-scoped (department scope enforced)
-- `GET /api/v1/pc/search?deadStockNo=&cpu=&ram=&disk=&os=&software=&warrantyStatus=&lab=` - Lab Incharge, HOD, Dean Infra (department-scoped for Lab Incharge/HOD; unrestricted for Dean Infra)
+- `POST/PUT/DELETE /api/v1/dept/:id`, and equivalent Lab/User/PC admin CRUD routes -
+  planned, Admin only, none exist yet (only the read above and PC's own endpoints exist).
 
-### Complaints
+### PC (`/api/v1/pc`) — implemented
 
-- `POST /api/complaints` - Public
-- `GET /api/complaints/track/:token` - Public
-- `GET /api/complaints` - Role-scoped list
-- `PATCH /api/complaints/:id/escalate` - Lab Incharge, HOD
-- `PATCH /api/complaints/:id/resolve` - Role-scoped
+- `POST /sync` - No auth yet (roadmap: Agent device key). Upserts a PC's `config` by
+  `deadStockNo`; if the PC doesn't exist yet and `department`+`lab` are supplied,
+  provisions a new PC record instead of 404ing.
+- `GET /lookup/:deadStockNo` - Public. Confirms a dead stock number is real and returns
+  its department/lab, used by the public raise-complaint form.
+- `POST /:id/health-card` - Auth + `deptScope` (department-scoped; implemented as `POST`
+  though it's a pure read).
+- `GET /search?deadStockNo=&cpu=&ram=&disk=&os=&software=&warrantyStatus=&lab=` - Lab
+  Incharge, HOD, Dean Infra (department-scoped for Lab Incharge/HOD; unrestricted for
+  Dean Infra).
+
+### Complaints (`/api/v1/complaint`) — implemented
+
+- `POST /` - Public
+- `GET /track/:token` - Public
+- `GET /` - Auth required; role- and escalation-level-scoped list (not filtering/paging
+  yet)
+- `PATCH /:id/escalate` - Lab Incharge, HOD
+- `PATCH /:id/resolve` - Lab Incharge, HOD, Dean Infra
 
 ## Response Codes
 

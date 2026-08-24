@@ -19,8 +19,8 @@ actually is (verified by reading every file), not the aspirational roadmap in
 - [`middlewares.md`](./middlewares.md) — `auth`, `deptScope`, `roleCheck`, and
   `errorHandler` in detail, including the exact request object shape each one produces
   and consumes.
-- [`auth-module.md`](./auth-module.md) — registration, OTP email verification, OTP-based
-  login, and JWT/cookie issuance.
+- [`auth-module.md`](./auth-module.md) — registration, OTP email verification, plain
+  password login, refresh/logout/me, and JWT/cookie issuance.
 - [`complaint-module.md`](./complaint-module.md) — public complaint submission and the
   escalation/resolution state machine.
 - [`models.md`](./models.md) — every Mongoose schema (`Dept`, `Lab`, `User`, `Pc`,
@@ -31,6 +31,10 @@ actually is (verified by reading every file), not the aspirational roadmap in
   talks to `/api/v1/pc/sync`.
 - [`known-issues.md`](./known-issues.md) — bugs and gaps found while reading the current
   tree, so they aren't rediscovered from scratch later.
+
+The `dept` module (`src/routes/dept.route.js`, `dept.controller.js`, `dept.service.js`)
+has no dedicated doc page — it's a single public route, `GET /api/v1/dept`, returning a
+lightweight `{name, code}` list used by the frontend's registration/department dropdown.
 
 ## How this differs from `backend/Readme.md`
 

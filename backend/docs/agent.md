@@ -9,12 +9,15 @@ already exists at `agent/collector.py`. See [`phases.md`](./phases.md) Phase 2.
 ```mermaid
 flowchart TD
     Start(["python collector.py"]) --> Prompt["Prompt on stdin:\n'Enter Dead Stock Number for this PC:'"]
-    Prompt --> Collect["Collect cpu / ram / disk / os /\ninstalled software (Windows registry)"]
-    Collect --> Post["POST { deadStockNo, config }\nto {LABMON_BACKEND_URL}/api/v1/pc/sync"]
+    Prompt --> Prompt2["Prompt: Department name,\nLab name (blank OK if PC already set up)"]
+    Prompt2 --> Collect["Collect cpu / ram / disk / os /\ninstalled software (Windows registry)"]
+    Collect --> Post["POST { deadStockNo, department?, lab?, config }\nto {LABMON_BACKEND_URL}/api/v1/pc/sync"]
     Post --> Ok{"2xx response?"}
     Ok -- Yes --> Print["Print JSON response, exit 0"]
     Ok -- No --> Fail["Print 'Sync failed: {exc}', exit 1"]
 ```
+
+`main()` also prompts for a Department name and Lab name (e.g. "Computer Science", "Lab 1") after the dead stock number. Both are optional — the prompt text says to leave them blank if the PC is already set up — and are only included in the payload (`build_payload(dead_stock_no, department, lab)`) when non-blank. This matches the backend's `syncPcConfig`: department/lab are required the first time a `deadStockNo` is provisioned, but optional (and left untouched if omitted) on every subsequent sync — see [`pc-module.md`](./pc-module.md#syncpcconfigpayload---post-apiv1pcsync).
 
 It is a manually-run CLI script (`python agent/collector.py`), not a background service
 or scheduled task — matches the "not yet packaged" state noted in
@@ -81,8 +84,8 @@ continue`), so one broken uninstall-key subkey doesn't abort the whole scan.
 ## Payload shape and sync
 
 ```python
-def build_payload(dead_stock_no):
-    return {
+def build_payload(dead_stock_no, department=None, lab=None):
+    payload = {
         "deadStockNo": dead_stock_no,
         "config": {
             "cpu": collect_cpu(), "ram": collect_ram(), "disk": collect_disk(),
@@ -90,6 +93,11 @@ def build_payload(dead_stock_no):
             "lastSyncedAt": datetime.now(timezone.utc).isoformat(),
         },
     }
+    if department:
+        payload["department"] = department
+    if lab:
+        payload["lab"] = lab
+    return payload
 
 def sync(payload):
     response = requests.post(SYNC_ENDPOINT, json=payload, timeout=30)
@@ -98,17 +106,20 @@ def sync(payload):
 ```
 
 This is exactly the shape `syncPcConfig` in `src/services/pc.service.js` destructures
-(`{ deadStockNo, config }`) — see [`pc-module.md`](./pc-module.md#syncpcconfigpayload).
+(`{ deadStockNo, department, lab, config }`) — see
+[`pc-module.md`](./pc-module.md#syncpcconfigpayload---post-apiv1pcsync).
 The agent's own `lastSyncedAt` (an ISO 8601 string, client-clock timestamp) is sent but
 **silently overwritten** server-side with `new Date()` at sync time — the backend trusts
 its own clock, not the agent's, for this field (documented in `pc-module.md`).
 
 `response.raise_for_status()` means any non-2xx response (e.g. the backend's `404 "PC
-not found. Check dead stock number."` when the dead stock number wasn't pre-registered
-by an admin) raises `requests.HTTPError`, caught in `main()`'s `except
-requests.RequestException` and printed as `"Sync failed: {exc}"` before exiting with
-status 1 — the raw backend error message isn't surfaced to the person running the
-agent, just the generic HTTP error text from `requests`.
+not found. Check dead stock number."` when the dead stock number is new and no
+department was entered at the prompt, or `400 "lab is required when provisioning a new
+PC"` when a department was given but the lab prompt was left blank) raises
+`requests.HTTPError`, caught in `main()`'s `except requests.RequestException` and printed
+as `"Sync failed: {exc}"` before exiting with status 1 — the raw backend error message
+isn't surfaced to the person running the agent, just the generic HTTP error text from
+`requests`.
 
 ## No authentication
 

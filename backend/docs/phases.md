@@ -1,20 +1,18 @@
 # Roadmap Phases — Planned vs. Actual
 
 `backend/Readme.md` lays out a 7-phase roadmap. This page cross-checks each phase against
-the actual code and git history (`git log --oneline`) as of 2026-08-13.
+the actual code and git history (`git log --oneline`), last verified 2026-08-24.
 
 ```mermaid
 flowchart LR
-    P1["1. Foundation"]:::done --> P2["2. Python Agent"]:::done --> P3["3. Health Card +\nComplaint Core"]:::done --> P4["4. Role Dashboards"]:::todo --> P5["5. Search"]:::todo --> P6["6. Security\nHardening"]:::partial --> P7["7. Deployment"]:::todo
+    P1["1. Foundation"]:::done --> P2["2. Python Agent"]:::done --> P3["3. Health Card +\nComplaint Core"]:::done --> P4["4. Role Dashboards"]:::partial --> P5["5. Search"]:::done --> P6["6. Security\nHardening"]:::partial --> P7["7. Deployment"]:::todo
 
     classDef done fill:#2e7d32,color:#fff,stroke:none
     classDef todo fill:#9e9e9e,color:#fff,stroke:none
     classDef partial fill:#f9a825,color:#fff,stroke:none
 ```
 
-Green = done, amber = partial, grey = not started as of this snapshot — see
-[`currentSystem.md`](../../currentSystem.md) for a newer read on Phase 5, which has since
-shipped.
+Green = done, amber = partial, grey = not started as of this snapshot.
 
 ## Phase 1: Foundation
 
@@ -56,8 +54,9 @@ machine.
   `complaint.service.js`, driven by the `NEXT_LEVEL` / `STATUS_FOR_LEVEL` lookup tables in
   `constants.js`. See [`complaint-module.md`](./complaint-module.md).
 - Public tracking: `GET /api/v1/complaint/track/:token` via `trackComplaint`.
-- Role/department-scoped listing: `GET /api/v1/complaint` via `getComplaints`, gated by
-  `auth` + `deptScope`.
+- Role/level-scoped listing: `GET /api/v1/complaint` via `getComplaints`, gated by
+  `auth` (scoping itself is computed inside the service via `buildComplaintScope`, not
+  `deptScope` middleware).
 
 Everything planned for this phase is now built.
 
@@ -66,16 +65,30 @@ Everything planned for this phase is now built.
 **Planned:** Lab Incharge, HOD, and Dean Infra dashboards with backend-enforced
 visibility.
 
-**Actual: not started.** No dashboard/list endpoints exist beyond the single-PC health
-card and single-complaint escalate/resolve actions. There's no `GET /api/complaints`
-or `GET /api/pcs` listing endpoint yet, so there's nothing for a dashboard to call.
+**Actual: partially done.**
+- Backend: `GET /api/v1/complaint` (role- and escalation-level-scoped list, via
+  `buildComplaintScope` in `complaint.service.js`) and `GET /api/v1/pc/search` both
+  exist and back real dashboard views. No dedicated aggregation/summary endpoints yet —
+  the frontend derives its own stats from the raw list.
+- Frontend: `LabInchargeHome.jsx` and `HodHome.jsx` are both built (thin wrappers around
+  a shared `ComplaintsDashboard.jsx`, wired to the real complaint-list endpoint).
+  `LaboratoriesPage.jsx` (PC search + health-card modal) is also built. `DeanInfraHome.jsx`
+  is still a stub — and `ComplaintsDashboard` as it stands always renders both
+  escalate/resolve actions, so it isn't yet correct for a Dean Infra view without a role-
+  aware tweak. `EquipmentPage.jsx`/`InventoryPage.jsx`/`RequestsPage.jsx` are also still
+  stubs (out of scope for the complaint/PC dashboards this phase covers).
 
-## Phase 5: Search
+## Phase 5: Search (Done)
 
 **Planned:** PC search by configuration and software, indexed queries.
 
-**Actual: not started.** No `GET /api/pc/search` route, controller, or service exists.
-No indexes beyond the implicit ones from `unique: true` schema fields.
+**Actual: done.** `GET /api/v1/pc/search` (`pc.route.js` -> `searchPcs` in
+`pc.service.js`) supports regex-escaped, case-insensitive partial matching on
+`deadStockNo`/`cpu`/`ram`/`disk`/`os`/`software`, plus exact matches on `warrantyStatus`
+and `lab`; auth + `roleCheck(labIncharge, hod, deanInfra)` + `deptScope`-gated. `Pc` has
+explicit indexes on `{ department: 1, lab: 1 }` and `{ "warranty.status": 1 }` in
+addition to the implicit unique index on `deadStockNo`. Wired up on the frontend via
+`PcSearchPage.jsx`/`pcService.js`/`PcHealthCardModal.jsx`.
 
 ## Phase 6: Security Hardening
 
@@ -106,7 +119,7 @@ No indexes beyond the implicit ones from `unique: true` schema fields.
 | 1. Foundation | Done |
 | 2. Python Agent | Done |
 | 3. Health Card + Complaint Core | Done |
-| 4. Role Dashboards | Not started |
-| 5. Search | Not started |
+| 4. Role Dashboards | Partial (Lab Incharge/HOD complaint dashboards and PC search/health-card done; Dean Infra dashboard, Equipment/Inventory/Requests pages, and backend aggregation endpoints still missing) |
+| 5. Search | Done |
 | 6. Security Hardening | Partial (Helmet/CORS/audit trail done; rate limiting and request validation missing) |
 | 7. Deployment | Not started |

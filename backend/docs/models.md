@@ -115,7 +115,8 @@ config: {
 
 `deadStockNo` is the physical asset tag and the natural key the Python agent and public
 complaint form both key off of (neither needs to know the Mongo `_id`). `config` is the
-embedded subdocument the agent overwrites wholesale on every sync — full detail in
+embedded subdocument the agent syncs field-by-field on every sync (only keys present in
+the payload are `$set`, so a partial payload no longer wipes the rest) — full detail in
 [`pc-module.md`](./pc-module.md#model-srcmodelspcmodeljs). `warranty.status` is a plain
 enum with a default, not derived from `expiryDate` — nothing currently auto-flips it to
 `"Expired"` when `expiryDate` passes; that would need to be either a scheduled job or a
@@ -151,8 +152,8 @@ manually.
 
 ## Indexes
 
-Only the implicit unique indexes from `unique: true` exist today:
-`Dept.name`, `User.email`, `Pc.deadStockNo`, `Complaint.token`. No compound or
-query-pattern indexes (e.g. `Pc` on `department` for scoped listing, or `Complaint` on
-`{ department, status }` for a dashboard query) have been added yet — relevant once
-Phase 4 (dashboards) and Phase 5 (search) are built.
+Implicit unique indexes from `unique: true` on `Dept.name`, `User.email`,
+`Pc.deadStockNo`, `Complaint.token`, plus two explicit compound/single-field indexes on
+`Pc`: `{ department: 1, lab: 1 }` (scoped listing) and `{ "warranty.status": 1 }`. No
+indexes have been added on `Complaint` yet (e.g. `{ department, status }` for a
+dashboard query) — relevant once Phase 4 (dashboards) is built.

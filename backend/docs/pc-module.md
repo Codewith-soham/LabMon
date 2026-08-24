@@ -7,9 +7,11 @@ Covers `src/services/pc.service.js`, its endpoints in `src/routes/pc.route.js` /
 ```mermaid
 flowchart LR
     Agent(["Python agent"]) -->|"POST /pc/sync\n(no auth)"| Sync["syncPcConfig"]
+    Public(["Public raise-complaint form"]) -->|"GET /pc/lookup/:deadStockNo\n(no auth)"| Lookup["lookupPcByDeadStockNo"]
     Staff(["Lab Incharge / HOD / Dean Infra"]) -->|"POST /pc/:id/health-card\n(auth + deptScope)"| Health["getPcHealthCard"]
     Staff -->|"GET /pc/search\n(auth + roleCheck + deptScope)"| Search["searchPcs"]
     Sync --> DB[("Pc collection")]
+    Lookup --> DB
     Health --> DB
     Search --> DB
 ```
@@ -19,14 +21,25 @@ flowchart LR
 Agent-facing endpoint. No auth middleware yet (device-key auth is planned, not implemented).
 
 - Requires `payload.deadStockNo`; throws `400` (`"deadStockNo is required"`) if missing.
-- Looks up the PC by `deadStockNo` and `$set`s its `config` to `{ ...payload.config, lastSyncedAt: new Date() }`, overwriting the whole embedded `config` subdocument (any field omitted from `payload.config` is dropped, not merged).
-- Returns the updated document (`{ returnDocument: "after" }`).
-- Throws `404` (`"PC not found. Check dead stock number."`) if no PC has that `deadStockNo` - this endpoint does not create PCs, only updates config on existing ones.
+- Builds a field-by-field `configSet` from `payload.config` (only keys present and `!== undefined` are included as individual `config.<key>` paths), so an omitted field is left untouched rather than wiped — this is a merge, not a whole-subdocument overwrite. `config.lastSyncedAt` is always stamped server-side with `new Date()`, ignoring/overwriting whatever the agent sent for that field.
+- **Existing PC** (`deadStockNo` already provisioned): applies `configSet` via `$set`. If `payload.department` and/or `payload.lab` are also provided, they're resolved and updated too (`department` via `resolveDepartmentId`, `lab` via `resolveOrCreateLabId`) — this lets a technician correct a mis-assigned PC's department/lab from the agent prompt. Omitting them leaves the existing department/lab untouched. Returns the updated document (`{ returnDocument: "after" }`).
+- **No PC with that `deadStockNo` yet** (first-time provisioning): requires `payload.department`, else throws `404` (`"PC not found. Check dead stock number."`) — preserves the original "unknown PC" behavior for a plain sync with no department. If `department` is given but `payload.lab` is missing, throws `400` (`"lab is required when provisioning a new PC"`). With both present, creates a new `Pc` with `warranty.status: "Active"` and the collected `config`.
+- `resolveDepartmentId(name)` looks up `Dept.findOne({ name })` (trimmed) and throws `404` if not found — departments are a fixed, pre-seeded list, never auto-created.
+- `resolveOrCreateLabId(name, departmentId)` does a `findOneAndUpdate` with `upsert: true` on `{ name, department }` — labs are ad-hoc, department-scoped, and auto-created on first mention.
+
+## `lookupPcByDeadStockNo(deadStockNo)` -> `GET /api/v1/pc/lookup/:deadStockNo`
+
+Public, unauthenticated — used by the login-free raise-complaint form to confirm a dead stock number is real and preview its department/lab before the complainant submits.
+
+- Trims `deadStockNo`; throws `400` (`"deadStockNo is required"`) if blank.
+- `Pc.findOne({ deadStockNo }).select("deadStockNo department lab").populate("department", "name").populate("lab", "name")` — deliberately narrow projection, doesn't leak `config`/`warranty`.
+- Throws `404` (`"PC not found. Check dead stock number."`) if no match.
 
 ## `getPcHealthCard(pcId, scope)` -> `POST /api/v1/pc/:id/health-card`
 
 `auth`, `deptScope`.
 
+- Validates `pcId` is a valid Mongo ObjectId first (`mongoose.Types.ObjectId.isValid`), throwing a clean `400` (`"Invalid PC id"`) instead of letting a malformed id fall through to an uncaught Mongoose `CastError` / generic `500`.
 - `Pc.findOne({ _id: pcId, ...scope })` - `scope` comes from `deptScope` (`{}` for admin/deanInfra, `{ department: req.user.department }` otherwise), so a labIncharge/hod requesting a PC outside their department gets the same `404` as a nonexistent id.
 - Throws `404` (`"Pc not found"`) if no match.
 - Returns the full PC document (deadStockNo, department, lab, warranty, purchaseDate, config).

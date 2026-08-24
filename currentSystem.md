@@ -1,6 +1,8 @@
 # LABMON — Current System State
 
-_Snapshot written 2026-08-20 by reading the actual code, not the docs (several existing docs are stale — see "Docs vs. reality" below)._
+_Snapshot written 2026-08-20, refreshed 2026-08-24 by reading the actual code again — the
+2026-08-20 version of this doc had itself already drifted from the code on a few points
+(see "Docs vs. reality" below for what changed)._
 
 ## 1. What LABMON is
 
@@ -25,7 +27,7 @@ D:\labmon\
 ├── backend/     Node.js + Express + MongoDB (Mongoose) — most complete piece
 ├── frontend/    React 19 + Vite — scaffolded, partially built
 ├── agent/       Python collector (single script) — functional, unpackaged
-└── CLAUDE.md    Project instructions for Claude Code (currently stale, see §6)
+└── CLAUDE.md    Project instructions for Claude Code (see §6 for doc-freshness notes)
 ```
 
 Three independent runtimes, no shared package/workspace — each is run and installed separately.
@@ -63,20 +65,32 @@ Complaint `status`: `Open → Escalated_HOD → Escalated_Dean → Resolved`; `c
 
 ### API surface that actually exists today
 
-**Auth** (`/api/v1/auth`, all public except `logout`) — two-step OTP-gated flow, not plain password login:
+**Auth** (`/api/v1/auth`, all public except `logout`/`me`) — registration is OTP-gated,
+login is a plain password check that issues tokens directly:
 - `POST /register`, `POST /verify-email`, `POST /resend-otp`
-- `POST /login` (password check → sends OTP, no session yet), `POST /verify-login-otp` (OTP check → issues JWT access+refresh tokens as httpOnly cookies)
-- `POST /refresh-token`, `POST /logout` (auth-protected)
+- `POST /login` (password check → issues JWT access+refresh tokens as httpOnly cookies
+  immediately; the login-OTP step this doc previously described has been removed)
+- `POST /refresh-token` (rotates both tokens), `POST /logout` (auth-protected), `GET /me`
+  (auth-protected, session rehydration)
 
 **PC** (`/api/v1/pc`):
-- `POST /sync` — agent-facing, no auth yet, upserts a PC's `config` by `deadStockNo`
-- `POST /:id/health-card` — auth + deptScope, returns full PC doc (note: implemented as POST though it's a pure read)
+- `POST /sync` — agent-facing, no auth yet, `$set`s a PC's `config` field-by-field by
+  `deadStockNo` (partial payloads no longer wipe the rest); if the dead stock number is
+  new and `department`+`lab` are supplied, provisions a brand-new PC instead of 404ing
+- `GET /lookup/:deadStockNo` — public, confirms a dead stock number is real and returns
+  its department/lab, used by the unauthenticated raise-complaint form
+- `POST /:id/health-card` — auth + deptScope, validates `pcId` as a Mongo ObjectId first
+  (clean `400` on a malformed id), returns full PC doc (note: implemented as POST though
+  it's a pure read)
 - `GET /search` — auth + roleCheck(labIncharge/hod/deanInfra) + deptScope; filter by deadStockNo/cpu/ram/disk/os/software (regex, case-insensitive, escaped) and warrantyStatus/lab (exact)
 
 **Complaint** (`/api/v1/complaint`):
 - `POST /` — public, creates complaint from `deadStockNo` + description + raisedBy, issues an 8-char `nanoid` token
 - `GET /track/:token` — public, returns a trimmed status/level projection
-- `GET /` — auth + deptScope, department-scoped list, no pagination/filtering yet
+- `GET /` — auth required; role- and escalation-level-scoped list computed inside the
+  service (`buildComplaintScope`, not `deptScope` middleware) — hod/deanInfra only see
+  complaints currently at their own level, not their whole department/system history; no
+  pagination/filtering yet
 - `PATCH /:id/escalate` — auth + roleCheck(labIncharge, hod); only the role matching the complaint's current level can move it forward
 - `PATCH /:id/resolve` — auth + roleCheck(labIncharge, hod, deanInfra); any level can close it
 
@@ -93,7 +107,7 @@ Complaint `status`: `Open → Escalated_HOD → Escalated_Dean → Resolved`; `c
 | PC search | Done |
 | Auth refresh/logout/resend-OTP | Done (these were "missing" in older docs — now implemented) |
 | Department listing | Done (minimal — no admin CRUD yet) |
-| Role dashboards (backend aggregation/summary endpoints) | Not started — frontend dashboards currently fake/derive their own data |
+| Role dashboards | Partial — Lab Incharge/HOD complaint dashboards and PC search built on the frontend against real endpoints; no backend aggregation/summary endpoints yet (frontend derives its own stats from the raw list); Dean Infra dashboard still a stub |
 | Admin CRUD for Dept/Lab/User/Pc | Not started |
 | Rate limiting | Not started |
 | Request-body validation library (Zod/Joi) | Not started — relies on Mongoose schema validation only |
@@ -101,55 +115,86 @@ Complaint `status`: `Open → Escalated_HOD → Escalated_Dean → Resolved`; `c
 | Agent device authentication | Not started — `/pc/sync` has no credential check |
 
 ### Known real issues in the current backend code
-- `pc.route.js` imports `Router` as the default export of `express` (should be the named export) — works today but is fragile.
-- `getPcHealthCard` doesn't validate `pcId` is a Mongo ObjectId before querying → a malformed id throws an uncaught Mongoose `CastError` → generic `500` instead of a clean `400`.
-- `syncPcConfig` overwrites the whole `config` subdocument on every sync (not a field-by-field merge) — a partial payload would wipe other fields. Not hit today because the agent always sends everything.
 - `POST /register` has no access control — anyone can self-register as `admin`. The roadmap says registration should be admin-only.
-- `POST /pc/sync` has no device authentication — anyone who knows/guesses a `deadStockNo` can overwrite that PC's config.
-- Auth cookie `maxAge` values are hardcoded (15m/7d) rather than derived from `JWT_ACCESS_EXPIRY`/`JWT_REFRESH_EXPIRY` env vars — can silently drift out of sync if those env vars change.
-- Department scoping logic exists in two different forms: `deptScope` middleware (PC health-card, complaint list) vs. an inline admin/deanInfra-bypass + department-match check duplicated inside `complaint.service.js`'s escalate/resolve — behaviorally consistent today, but not unified.
+- `POST /pc/sync` has no device authentication — anyone who knows/guesses a `deadStockNo` can overwrite that PC's config, or provision a new one outright if they also supply a valid `department`/`lab`.
+- `POST /resend-otp` doesn't verify the caller owns the email — only `{ email, purpose }` is required, no proof of account ownership.
+- Department/level scoping logic exists in *three* different forms: `deptScope` middleware (PC health-card route only), an inline `assertDeptAccess` check in `complaint.service.js`'s escalate/resolve, and `buildComplaintScope` in `complaint.service.js`'s `getComplaints` (department **and** escalation-level aware) — behaviorally consistent today, but not unified.
+- No rate limiting anywhere, including on the public `POST /complaint`, `POST /pc/sync`, `POST /login`, and `POST /resend-otp`.
 
-*(The much longer bug list that used to live in `CLAUDE.md`'s "Known issues" section — the `Role` import, `ObjectID` casing, `userSchema.method` typo, `Obejct.values` typo, default-export `User` import, `prcoess.env` typo — has all been fixed in the current tree. `CLAUDE.md` has not been updated to reflect that; see §6.)*
+Previously-listed issues that are now fixed: `pc.route.js`'s wrong `Router` import,
+`app.js`'s missing leading `/` on the complaint mount, `getPcHealthCard`'s missing
+`pcId` validation, `syncPcConfig`'s whole-subdocument overwrite, and hardcoded auth
+cookie `maxAge` — see [`backend/docs/known-issues.md`](./backend/docs/known-issues.md)
+for the full "already fixed" list.
 
 ## 4. Frontend (`frontend/`) — React 19 + Vite, partially built
 
 Run from `frontend/`: `npm run dev` (Vite dev server), `npm run build`, `npm run lint` (oxlint). Talks to the backend via `axios` (`src/services/apiClient.js`, base URL `VITE_API_BASE_URL` or `http://localhost:8000/api/v1`, `withCredentials: true` for the auth cookies, plus a `localStorage` access-token fallback for the `Authorization` header).
 
 ### What's actually built
-- **Auth flow** (`features/auth/AuthPage.jsx`, 288 lines; `OtpVerification.jsx`, 111 lines) — login/register forms + OTP verification screen, wired to `authService.js` (login, register, logout, refresh, verify-email, verify-login-otp; a `resendOtp` call is wired client-side but has no matching concept issue — the backend route now exists at `/auth/resend-otp`, so this is in sync).
-- **Lab Incharge dashboard** (`features/lab-incharge/LabInchargeHome.jsx`, 207 lines) — the one fleshed-out dashboard: complaint list/stats, a `Donut.jsx` chart component, and `ComplaintDetailModal.jsx` for viewing/acting on a single complaint. Currently backed by local mock data (`complaintData.js`), not yet wired to the real `GET /api/v1/complaint` endpoint.
+- **Auth flow** (`features/auth/AuthPage.jsx`; `OtpVerification.jsx`) — login/register forms + OTP verification screen (registration only — there is no login-OTP step to verify), wired to `authService.js` (login, register, logout, refresh, verify-email, resendOtp — no stale `verify-login-otp` call anywhere in the frontend).
+- **Lab Incharge and HOD dashboards** (`features/lab-incharge/LabInchargeHome.jsx`, `features/hod/HodHome.jsx`) — both thin wrappers around a shared `features/complaints/ComplaintsDashboard.jsx`: complaint list/stats, a `Donut.jsx` chart, `ComplaintDetailModal.jsx`/`ResolveComplaintModal.jsx`. Wired to the real `GET /api/v1/complaint` endpoint — no mock data file in the current tree. `ComplaintsDashboard` currently always renders both escalate/resolve actions regardless of role, so it isn't yet correct as-is for a Dean Infra view (no escalation step above Dean Infra).
+- **Laboratories / PC search** (`features/laboratories/LaboratoriesPage.jsx`, wrapping `PcSearchPage.jsx` + `PcHealthCardModal.jsx`, backed by `pcService.js`) — also real and wired to the real search/lookup endpoints.
 - **Routing** (`app/routes.jsx`) — role-gated routes via `ProtectedRoute.jsx` + `ROLES`/`ROUTES` constants that mirror the backend's role/status enums by hand (`frontend/src/constants/roles.js` has a comment noting it must be kept in sync manually — there's no shared package between frontend/backend).
 - **Auth context** (`app/providers/AuthProvider.jsx`) — minimal: just a `user`/`setUser` React context, no token-refresh-on-expiry logic yet.
 
 ### What's a stub
-`HodHome.jsx`, `DeanInfraHome.jsx`, `LaboratoriesPage.jsx`, `EquipmentPage.jsx`, `InventoryPage.jsx`, `RequestsPage.jsx` are all ~9-line placeholder components — routed to, but with no real content yet. `src/components/charts/` and `src/store/` are empty (`.gitkeep` only) — no state-management library adopted yet.
+`DeanInfraHome.jsx`, `EquipmentPage.jsx`, `InventoryPage.jsx`, `RequestsPage.jsx` are still placeholder components — routed to, but with no real content yet. `src/store/` remains empty (`.gitkeep` only) — no state-management library adopted yet.
 
 A `frontend/dist/` build output is checked into the tree from a prior `vite build` run.
 
 ## 5. Python agent (`agent/collector.py`)
 
-A single-file, manually-run CLI script (`python agent/collector.py`) — **not** a background service or scheduled task, and not yet mentioned as existing in `CLAUDE.md` (see §6).
+A single-file, manually-run CLI script (`python agent/collector.py`) — **not** a background service or scheduled task.
 
-- Prompts for a dead-stock number on stdin.
-- Collects CPU/RAM/disk/OS via `psutil`/`platform` (cross-platform), plus installed software via a Windows registry scan (`winreg`, Windows-only — silently returns `[]` on non-Windows).
-- POSTs `{ deadStockNo, config }` to `{LABMON_BACKEND_URL}/api/v1/pc/sync` (default `http://localhost:8000`, which does **not** match the backend's own sample `.env` default of port 5000 — set `LABMON_BACKEND_URL` explicitly when running the agent locally).
+- Prompts for a dead-stock number on stdin, then for a Department name and Lab name
+  (both optional — only needed the first time a PC is provisioned; left blank on
+  subsequent syncs to leave the existing department/lab untouched).
+- Collects CPU (marketing name from the Windows registry's `ProcessorNameString` where
+  available, falling back to `platform.processor()` + `cpu_freq()` otherwise), RAM,
+  disk, OS via `psutil`/`platform` (cross-platform), plus installed software via a
+  Windows registry scan (`winreg`, Windows-only — silently returns `[]` on non-Windows).
+- POSTs `{ deadStockNo, department?, lab?, config }` to
+  `{LABMON_BACKEND_URL}/api/v1/pc/sync` (default `http://localhost:8000`, which does
+  **not** match the backend's own sample `.env` default of port 5000 — set
+  `LABMON_BACKEND_URL` explicitly when running the agent locally).
 - No authentication on the request (matches the backend's currently-open `/pc/sync` endpoint).
 - Dependencies: `psutil`, `requests` (`agent/requirements.txt`); a `venv/` is present locally but gitignored.
 
-## 6. Docs vs. reality — why you lost track
+## 6. Docs vs. reality — status as of 2026-08-24
 
-There are **three overlapping sources of "what's built"** in this repo, and they've drifted apart at different times:
+As of the 2026-08-20 snapshot, `CLAUDE.md`, `backend/docs/*.md`, and `backend/Readme.md`
+had all drifted from the code in different ways and at different times (frontend/agent
+work not reflected, login-OTP removal not reflected, several "known" bugs already fixed
+without the docs catching up). That drift has now been swept in a documentation-refresh
+pass:
 
-1. **`CLAUDE.md`** (repo root) — says only the backend exists, frontend and Python agent are "not yet started," and lists several backend bugs. Both claims are now wrong: the agent and a substantial frontend both exist, and every listed bug has since been fixed.
-2. **`backend/docs/*.md`** — a detailed, accurate-as-of-2026-08-13 snapshot of the backend, including its own `known-issues.md` that supersedes `CLAUDE.md`'s bug list. This is the best current backend reference, but it predates: the `dept` module, auth `resend-otp`/`refresh-token`/`logout` routes, and all frontend work (all of which landed in commits after `43ab010`/`220f667`, i.e. `b26a278` through `db47b4d`).
-3. **`backend/Readme.md`** — the original product/roadmap doc. Its "Repository Status" section is the most out of date (still frames the agent and frontend as unstarted future work), but its Phase 5 note ("Search (Done)") and data model tables are accurate.
-4. **The actual code** (this document's source) — as of commit `db47b4d`, ahead of all three docs above.
+- `CLAUDE.md` — updated: "Known gaps," the auth-flow description, the escalation/scoping
+  description, and the frontend-status bullets all now match the code.
+- `backend/docs/*.md` — updated across the board (`agent.md`, `pc-module.md`,
+  `auth-module.md`, `complaint-module.md`, `middlewares.md`, `utils.md`, `models.md`,
+  `constants.md`, `architecture.md`, `known-issues.md`, `phases.md`) to cover the `dept`
+  module, the department/lab PC-provisioning flow, the login-OTP removal, the
+  field-by-field `syncPcConfig` merge, and the three-way department/level scoping split.
+- `frontend/docs/frontend-design.md` — updated to reflect that the Lab Incharge and HOD
+  dashboards, and PC search, are real and wired to live endpoints (not mock data), and
+  that only Dean Infra/Equipment/Inventory/Requests remain stubs.
+- `backend/Readme.md` — "Repository Status" and "Planned API Surface" sections updated to
+  match the actual current route list (previously still framed the agent/frontend as
+  future work and used a stale `/api/*` prefix instead of `/api/v1/*`).
 
-**Recommended fix**, if you want the docs to stop drifting: update `CLAUDE.md`'s "Repository Status" and "Known issues" sections to match this document, and treat `backend/docs/` as due for a refresh pass (dept module + auth resend/refresh/logout + frontend now exist and aren't covered there). Ask if you'd like that done as a follow-up edit.
+This document (`currentSystem.md`) is itself a hand-maintained snapshot, not generated
+from the code — treat *it* as due for the same kind of re-verification the next time a
+significant round of backend/frontend changes lands, rather than assuming it stays
+accurate indefinitely.
 
 ## 7. Suggested next steps (from the roadmap gaps in §3/§4)
 
-1. Wire `LabInchargeHome` to the real `GET /api/v1/complaint` endpoint instead of `complaintData.js` mock data — the backend side is ready.
-2. Build out `HodHome`/`DeanInfraHome` against the same complaint-list endpoint (department-scoped for HOD, unscoped for Dean Infra — the backend already supports this via `deptScope`).
-3. Add device-key auth to `POST /pc/sync` and role-restriction to `POST /register`, the two flagged open security gaps.
-4. Decide on Admin CRUD (Dept/Lab/User/Pc) — currently no create/update/delete endpoints exist for any of these, only reads.
+1. Add a role-aware prop to `ComplaintsDashboard` (e.g. `allowEscalate`) so it can back
+   `DeanInfraHome` correctly — Dean Infra has no level above it to escalate to, but the
+   shared component currently always renders an escalate action.
+2. Add device-key auth to `POST /pc/sync` and role-restriction to `POST /register`, the
+   two flagged open security gaps.
+3. Decide on Admin CRUD (Dept/Lab/User/Pc) — currently no create/update/delete endpoints
+   exist for any of these, only reads.
+4. Build out `EquipmentPage`/`InventoryPage`/`RequestsPage`, still stub placeholders.

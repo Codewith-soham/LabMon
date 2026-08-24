@@ -79,10 +79,14 @@ particular case still works despite the inconsistency.
 ```js
 generateAccessToken(user)  -> jwt.sign({ id: user._id, role: user.role, department: user.department }, JWT_ACCESS_TOKEN, { expiresIn: JWT_ACCESS_EXPIRY })
 generateRefreshToken(user) -> jwt.sign({ userId: user._id }, JWT_REFRESH_TOKEN, { expiresIn: JWT_REFRESH_EXPIRY })
+parseExpiryToMs(expiry)    -> parses "15m"/"7d"/"30s"/"1h"-style expiresIn strings into milliseconds
 ```
 
-Full detail (payload shape, why access/refresh have different claim names, how this
-feeds `auth.middleware.js`) is in
+`generateAccessToken`/`generateRefreshToken` are used by `auth.service.js` (login,
+refresh); `parseExpiryToMs` is used by `auth.controller.js` to derive cookie `maxAge`
+from `JWT_ACCESS_EXPIRY`/`JWT_REFRESH_EXPIRY` so cookie lifetime can't drift from the
+JWT's own `exp` claim. Full detail (payload shape, why access/refresh have different
+claim names, how this feeds `auth.middleware.js`) is in
 [`auth-module.md`](./auth-module.md#token-generation-srcutilstokengenerationjs).
 
 ## `otp.js` — `src/utils/otp.js`
@@ -117,7 +121,8 @@ usable without SMTP credentials. The `otpEvents` emitter is a deliberate test ho
 ```
 ApiError / ApiResponse   <- used by every controller and every service
 asyncHandler             <- wraps every controller
-tokenGeneration, otp, mailer  <- used only by auth.service.js
+tokenGeneration           <- auth.service.js and auth.controller.js
+otp, mailer               <- used only by auth.service.js
 ```
 
 `ApiError` and `ApiResponse` are the only two utilities with app-wide reach; the other

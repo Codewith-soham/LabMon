@@ -5,19 +5,20 @@ already exposes (`backend/src/routes/*`). Each phase only uses endpoints that ex
 today — nothing here assumes an unbuilt backend feature. Status reflects the codebase as
 of 2026-08-21.
 
-Reference for the "already built" look-and-feel: `features/lab-incharge/LabInchargeHome.jsx`
-+ `Donut.jsx` + `ComplaintDetailModal.jsx` + `LabInchargeHome.css`. New role dashboards
-should reuse this pattern (stat cards with donut charts, panel + table, detail modal
-reusing `AuthPage.css` classes) rather than inventing a new visual language.
+Reference for the "already built" look-and-feel: `features/complaints/ComplaintsDashboard.jsx`
+(the shared component `LabInchargeHome.jsx`/`HodHome.jsx` both wrap) + `Donut.jsx` +
+`ComplaintDetailModal.jsx` + `ComplaintsDashboard.css`. Further screens (`PcSearchPage.jsx`
+already does this) should reuse this pattern (stat cards with donut charts, panel + table,
+detail modal reusing `AuthPage.css` classes) rather than inventing a new visual language.
 
 ## Phase status at a glance
 
 ```mermaid
 flowchart TD
     P0["Phase 0: Auth Shell"]:::done --> P1["Phase 1: Lab Incharge Dashboard"]:::done
-    P1 --> P2["Phase 2: HOD Dashboard"]:::todo
+    P1 --> P2["Phase 2: HOD Dashboard"]:::done
     P2 --> P3["Phase 3: Dean Infra Dashboard"]:::todo
-    P0 --> P4["Phase 4: PC Health Card + Search"]:::todo
+    P0 --> P4["Phase 4: PC Health Card + Search"]:::done
     P0 --> P5["Phase 5: Public Complaint Submission"]:::done
     P1 --> P6["Phase 6: Admin"]:::blocked
 
@@ -30,8 +31,11 @@ Green = done, grey = not started, red = blocked on backend work.
 
 ## Phase 0: Auth Shell — Done
 
-Backend: `POST /auth/register`, `verify-email`, `resend-otp`, `login`, `verify-login-otp`,
-`refresh-token`, `logout`, `GET /auth/me`.
+Backend: `POST /auth/register`, `verify-email`, `resend-otp`, `login`, `refresh-token`,
+`logout`, `GET /auth/me`. Login is a single-step password check that issues JWT cookies
+directly — there is no `verify-login-otp` route on the backend (it was removed; only
+registration still has an OTP-verification step), and the frontend's `authService.js`
+correctly never calls one.
 
 - `AuthPage.jsx` — login/signup tabs, OTP step, role + department selects.
 - `OtpVerification.jsx` — OTP entry, resend.
@@ -49,80 +53,94 @@ Closed: the refresh-on-expiry gap called out in the previous version of this doc
 
 ## Phase 1: Lab Incharge Dashboard — Done
 
-Backend: `GET /complaint` (auth + deptScope), `PATCH /complaint/:id/escalate`,
-`PATCH /complaint/:id/resolve`.
+Backend: `GET /complaint` (auth, role/level-scoped server-side via
+`buildComplaintScope` — see [`complaint-module.md`](../../backend/docs/complaint-module.md)),
+`PATCH /complaint/:id/escalate`, `PATCH /complaint/:id/resolve`.
 
-Built: `LabInchargeHome.jsx`, `Donut.jsx`, `ComplaintDetailModal.jsx`,
-`ResolveComplaintModal.jsx`, `complaintMeta.js` (status label/color + date formatting),
-`LabInchargeHome.css` — header with user name/department badge/logout, 4 stat cards
-(total/open/escalated/resolved) with donut charts, complaints table, detail modal with
-Escalate/Resolve actions and history.
+Built as a **shared, role-parameterized component**, not a Lab-Incharge-only one:
+`features/complaints/ComplaintsDashboard.jsx` (+ `Donut.jsx`, `ComplaintDetailModal.jsx`,
+`ResolveComplaintModal.jsx`, `complaintMeta.js` for status label/color + date formatting,
+`ComplaintsDashboard.css`) — header with user name/department badge/logout, 4 stat cards
+(total/open/escalated/resolved, each also a clickable status filter) with donut charts,
+a searchable complaints table, detail modal with Escalate/Resolve actions and history.
+`features/lab-incharge/LabInchargeHome.jsx` is now a ~5-line wrapper:
+`<ComplaintsDashboard role={ROLES.LAB_INCHARGE} subtitle="LAB INCHARGE" defaultName="Lab Incharge" />`.
 
-- `complaintService.js` wraps `GET/PATCH /complaint` via `apiClient`; `LabInchargeHome`
-  fetches on mount and replaces the affected complaint in local state from each
+- `complaintService.js` wraps `GET/PATCH /complaint` via `apiClient`;
+  `ComplaintsDashboard` fetches `listComplaints()` on mount (real backend data — no mock
+  data file is used) and replaces the affected complaint in local state from each
   escalate/resolve response rather than refetching the whole list.
-- `canAct(complaint)` gates the row/modal actions on `complaint.currentLevel === role`
-  (plus not already `Resolved`) — matches the backend's role-gated escalate check instead
-  of always offering an action that could 403.
+- `canAct(complaint)` gates the row/modal actions on
+  `complaint.currentLevel === (user?.role || role)` (plus not already `Resolved`) —
+  matches the backend's role-gated escalate check instead of always offering an action
+  that could 403.
 - Resolve goes through `ResolveComplaintModal` (captures remarks) before calling
   `PATCH /complaint/:id/resolve`; escalate is a direct one-click action.
 - Loading and error states are wired for both the initial fetch and the
   escalate/resolve actions (`loadError`/`actionError`/`resolveError`).
+- A toolbar link to `ROUTES.LABORATORIES` (PC search, Phase 4) is present in the shared
+  dashboard header.
 
-## Phase 2: HOD Dashboard — Not started (`HodHome.jsx` is a stub)
+## Phase 2: HOD Dashboard — Done
 
-Backend: same `GET /complaint` (deptScope means an HOD sees their department's
-complaints — no separate endpoint), `PATCH /complaint/:id/escalate` (role-gated to
-whichever role owns the complaint's *current* level — HOD can escalate to Dean Infra),
+Backend: same `GET /complaint` — for an HOD, `buildComplaintScope` returns
+`{ department: user.department, currentLevel: ROLES.HOD }`, so the list is already
+narrowed server-side to their department's complaints currently sitting at HOD (no
+client-side filtering needed); `PATCH /complaint/:id/escalate` (role-gated to whichever
+role owns the complaint's *current* level — HOD can escalate to Dean Infra),
 `PATCH /complaint/:id/resolve`.
 
-- Same visual pattern as Lab Incharge: stat cards + table + detail modal.
-- Difference in data shape: HOD's queue is complaints where `currentLevel === 'hod'`
-  (i.e. `status === 'Escalated_HOD'`) plus visibility into ones already resolved/escalated
-  further, per whatever `GET /complaint` returns for this role — confirm the actual
-  filtering behavior in `complaint.service.js`'s `list` before assuming client-side
-  filtering is even needed. Note `assertDeptAccess` (added in `complaint.service.js`) is
-  what enforces department scoping on escalate/resolve server-side — admin/deanInfra
-  bypass it, everyone else is locked to their own department — so the HOD dashboard
-  doesn't need to duplicate that check client-side, just reuse `canAct` the way
-  `LabInchargeHome` does.
-- Escalate action here moves a complaint to Dean Infra, not back to Lab Incharge —
-  label the button "Escalate to Dean Infra" rather than reusing the generic label from
-  Phase 1.
-- Extract the stat-card-grid + table + modal shell from `LabInchargeHome` into a shared
-  component (e.g. `features/complaints/ComplaintDashboard.jsx`) parameterized by role,
-  instead of copy-pasting `LabInchargeHome.jsx` — HOD and Dean Infra are structurally
-  the same screen with different data and action labels.
+`features/hod/HodHome.jsx` is the same pattern as Lab Incharge — a thin wrapper over the
+shared `ComplaintsDashboard`: `<ComplaintsDashboard role={ROLES.HOD} subtitle="HOD"
+defaultName="HOD" />`. No separate HOD-specific component was built; the "extract into a
+shared component" plan from the previous version of this doc is what actually shipped,
+so Phase 3 (Dean Infra) is now just wiring the same component with a different role.
 
 ## Phase 3: Dean Infra Dashboard — Not started (`DeanInfraHome.jsx` is a stub)
 
-Backend: `GET /complaint` (deanInfra sees cross-department — `assertDeptAccess` in
-`complaint.service.js` explicitly bypasses the department check for `admin`/`deanInfra`),
+Backend: `GET /complaint` (for `deanInfra`, `buildComplaintScope` returns
+`{ currentLevel: ROLES.DEAN_INFRA }` — no department filter, since Dean Infra is
+cross-department, but still narrowed to complaints currently at their level),
 `PATCH /complaint/:id/resolve` only — Dean Infra is the last level, there is no further
 escalate target (`NEXT_LEVEL` has no entry past `deanInfra`).
 
-- Same shared dashboard component as Phase 2, role=`deanInfra`.
-- No Escalate action at all — only Resolve. The action column should reflect that
-  structurally, not just hide a disabled button.
-- Since Dean Infra isn't department-scoped, the table needs a Department column/filter
-  that Lab Incharge and HOD views don't need (they already know their own department).
+- Same shared `ComplaintsDashboard` component as Phase 1/2, just
+  `<ComplaintsDashboard role={ROLES.DEAN_INFRA} .../>` — but `ComplaintsDashboard` as it
+  exists today always renders both Escalate and Resolve action buttons whenever
+  `canAct(complaint)` is true, so it needs a small change (e.g. an `allowEscalate` prop)
+  before it's correct for Dean Infra, which should only ever offer Resolve.
+- Since Dean Infra isn't department-scoped, the table may want a Department column that
+  Lab Incharge/HOD views don't need (they already know their own department) — not
+  present in the shared component today.
 
-## Phase 4: PC Health Card + Search — Not started
+## Phase 4: PC Health Card + Search — Done
 
-Backend: `POST /pc/:id/health-card` (yes, `POST` not `GET` — noted as a known backend
-sharp edge, not a frontend choice to make), `GET /pc/search` (auth + role-gated to
-labIncharge/hod/deanInfra + deptScope).
+Backend: `GET /pc/search` (auth + roleCheck(labIncharge/hod/deanInfra) + deptScope),
+`POST /pc/:id/health-card` (yes, `POST` not `GET` — a known backend sharp edge, not a
+frontend choice), `GET /pc/lookup/:deadStockNo` (public).
 
-- A PC lookup/search screen: form hitting `GET /pc/search` with whatever query params
-  the backend supports (check `pc.service.js`'s `searchPc` for the actual filterable
-  fields — likely cpu/ram/disk/os/software — before building filter UI around fields
-  that don't exist).
-- A health-card detail view: calls `POST /pc/:id/health-card`, renders the embedded
-  `warranty` and `config` (cpu/ram/disk/os/software/lastSyncedAt) subdocuments.
-- This is what `LaboratoriesPage.jsx`/`EquipmentPage.jsx` stubs are presumably meant to
-  become — confirm with whoever scoped those feature folders whether "Laboratories" is
-  PC-per-lab and "Equipment" is PC-per-department, since the backend only has one `Pc`
-  model with `Dept`/`Lab` refs, not two distinct domain concepts.
+Built: `features/pc-search/PcSearchPage.jsx` + `PcHealthCardModal.jsx` +
+`pcSearchMeta.js` (warranty-status label/color) + `PcSearchPage.css`, backed by
+`services/pcService.js` (`searchPcs`, `lookupPc`, `getPcHealthCard`).
+`features/laboratories/LaboratoriesPage.jsx` is now a one-line wrapper —
+`<PcSearchPage />` — so the "Laboratories" nav entry *is* the PC search screen (there is
+no separate lab-vs-equipment split; the backend only has one `Pc` model with
+`Dept`/`Lab` refs, matching the note this doc previously flagged as an open question).
+
+- The search form covers all of `searchPcs`'s query params (`deadStockNo`, `cpu`, `ram`,
+  `disk`, `os`, `software`, `warrantyStatus`), reusing the dashboard's panel/table CSS
+  classes. Results load on mount with no filters (full department-scoped list) and
+  re-run on submit/reset.
+- Clicking a result row opens `PcHealthCardModal`, which renders `deadStockNo`,
+  `department`, `lab`, `warranty.status`/`expiryDate`, and the full `config`
+  (cpu/ram/disk/os/software/lastSyncedAt) — but **from the search-result object already
+  in hand**, not via a fresh `POST /pc/:id/health-card` call. `getPcHealthCard` exists in
+  `pcService.js` but nothing currently calls it, since `searchPcs` already returns every
+  field the modal needs; it's unused code today, not a broken integration.
+- `EquipmentPage.jsx`/`InventoryPage.jsx`/`RequestsPage.jsx` remain unbuilt placeholder
+  stubs — `RequestsPage`/`InventoryPage` don't correspond to anything the backend exposes
+  yet, and `EquipmentPage` is redundant with what `LaboratoriesPage`/`PcSearchPage` now
+  covers if "Equipment" was meant to be PC-per-department.
 
 ## Phase 5: Public Complaint Submission + Tracking — Done
 
@@ -156,11 +174,11 @@ to wire it to yet, and speculative admin screens would just be dead code sitting
 
 ## Cross-cutting frontend gaps (apply across every phase above)
 
-- **`complaintService.js` now exists** (`services/`, alongside `authService.js` and
-  `deptService.js`) and covers `listComplaints`/`escalateComplaint`/`resolveComplaint`/
-  `raiseComplaint`/`trackComplaint` — reuse it for Phases 2–3 rather than duplicating axios
-  calls. A `pcService.js` for Phase 4's `POST /pc/:id/health-card` + `GET /pc/search` still
-  doesn't exist.
+- **`complaintService.js` and `pcService.js` both exist** (`services/`, alongside
+  `authService.js` and `deptService.js`) — `complaintService.js` covers
+  `listComplaints`/`escalateComplaint`/`resolveComplaint`/`raiseComplaint`/
+  `trackComplaint`; `pcService.js` covers `searchPcs`/`lookupPc`/`getPcHealthCard`. Reuse
+  both for Phase 3 (Dean Infra) rather than duplicating axios calls.
 - **`ROLES`/`COMPLAINT_STATUS` are hand-mirrored** from `backend/src/config/constants.js`
   into `frontend/src/constants/roles.js` — if the backend enum changes, this file must be
   updated by hand; there's no shared package. Check this file against the backend's

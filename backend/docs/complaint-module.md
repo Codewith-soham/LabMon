@@ -44,8 +44,7 @@ router.patch("/:id/resolve",  auth, roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD, ROL
 Mounted (via `app.js`) at `/api/v1/complaint`.
 
 Also registered but omitted from the snippet above: `router.get("/track/:token", track)`
-(public tracking lookup) and `router.get("/", auth, deptScope, list)` (role/department-
-scoped listing).
+(public tracking lookup) and `router.get("/", auth, list)` (role-scoped listing).
 
 - `raiseComplaint` and `track` are deliberately public — anyone (a student, a lab
   visitor) can file a complaint without an account and check on it later via the token,
@@ -55,10 +54,12 @@ scoped listing).
   *role* is one of the allowed set — the actual "is this the right person for *this*
   complaint" check (current level match, department match) happens inside the service
   (see below), not in middleware.
-- `list` requires `auth` + `deptScope`, which populates `req.scope` for the service to
-  filter by (see [`middlewares.md`](./middlewares.md#deptscope)) — this is the one
-  complaint route that does use the shared scoping middleware rather than an inline
-  check.
+- `list` requires only `auth` — it does **not** go through the `deptScope` middleware.
+  Scoping is computed entirely inside `getComplaints(user)` via `buildComplaintScope`
+  (see below), because plain department-scoping isn't expressive enough here: HOD and
+  Dean Infra additionally need to see only complaints currently sitting *at their level*,
+  not their department's/everyone's full history. `deptScope` remains in use only on the
+  PC health-card route — see [`middlewares.md`](./middlewares.md#deptscope).
 
 ## Controller (`src/controllers/complaint.controller.js`)
 
@@ -158,12 +159,18 @@ flowchart TD
 ```
 
 ```js
+// shared by escalate and resolve — mirrors deptScope middleware's rule
+const assertDeptAccess = (user, department, action) => {
+    const isUnscoped = user.role === ROLES.ADMIN || user.role === ROLES.DEAN_INFRA
+    if (!isUnscoped && String(department) !== String(user.department)) {
+        throw new ApiError(403, `You are not authorized to ${action} complaints outside your department`)
+    }
+}
+
 const complaint = await Complaint.findById(complaintId)
 if (!complaint) throw new ApiError(404, "Complaint not found")
 if (complaint.status === COMPLAINT_STATUS.RESOLVED) throw new ApiError(400, "Cannot escalate a resolved complaint")
-if (user.role !== ROLES.ADMIN && user.role !== ROLES.DEAN_INFRA && String(complaint.department) !== String(user.department)) {
-    throw new ApiError(403, "You are not authorized to escalate complaints outside your department")
-}
+assertDeptAccess(user, complaint.department, "escalate")
 if (user.role !== complaint.currentLevel) {
     throw new ApiError(403, "Only the current level's incharge can escalate this complaint")
 }
@@ -174,6 +181,7 @@ complaint.currentLevel = nextLevel
 complaint.status = STATUS_FOR_LEVEL[nextLevel]
 complaint.history.push({ level: nextLevel, action: "escalated", by: user.id, at: new Date() })
 await complaint.save()
+await complaint.populate([{ path: "lab", select: "name" }, { path: "history.by", select: "name" }])
 ```
 
 Five checks, in order, each a distinct failure mode:
@@ -211,15 +219,14 @@ Then: mutate `currentLevel` and `status` together (from the two lookup tables), 
 const complaint = await Complaint.findById(complaintId)
 if (!complaint) throw new ApiError(404, "Complaint not found")
 if (complaint.status === COMPLAINT_STATUS.RESOLVED) throw new ApiError(400, "Complaint is already resolved")
-if (user.role !== ROLES.ADMIN && user.role !== ROLES.DEAN_INFRA && String(complaint.department) !== String(user.department)) {
-    throw new ApiError(403, "You are not authorized to resolve complaints outside your department")
-}
+assertDeptAccess(user, complaint.department, "resolve")
 if (user.role !== complaint.currentLevel) {
     throw new ApiError(403, "Only the current level's incharge can resolve this complaint")
 }
 complaint.status = COMPLAINT_STATUS.RESOLVED
 complaint.history.push({ level: complaint.currentLevel, action: "resolved", by: user.id, at: new Date(), note: remarks })
 await complaint.save()
+await complaint.populate([{ path: "lab", select: "name" }, { path: "history.by", select: "name" }])
 ```
 
 Same four checks as escalation (existence, terminal state, department scope,
@@ -246,18 +253,46 @@ if (!complaint) throw new ApiError(404, "Invalid tracking token")
 Public lookup, deliberately projected down to a small field set — no `department`/`lab`/
 `history`/`raisedBy` leaked back to an unauthenticated caller who only has the token.
 
-### `getComplaints(scope)`
+### `getComplaints(user)`
 
 ```js
-const complaints = await Complaint.find({ ...scope }).sort({ createdAt: -1 })
-return complaints
+// admin sees everything; labIncharge sees their department's whole queue;
+// hod/deanInfra only see complaints currently escalated to their level (department-
+// scoped for hod, across all departments for deanInfra)
+const buildComplaintScope = (user) => {
+    if (user.role === ROLES.ADMIN) return {}
+    if (user.role === ROLES.DEAN_INFRA) return { currentLevel: ROLES.DEAN_INFRA }
+    if (user.role === ROLES.HOD) return { department: user.department, currentLevel: ROLES.HOD }
+    return { department: user.department }
+}
+
+const getComplaints = async (user) => {
+    const scope = buildComplaintScope(user)
+    return Complaint.find(scope)
+        .sort({ createdAt: -1 })
+        .populate("lab", "name")
+        .populate("history.by", "name")
+}
 ```
 
-`scope` is `req.scope` as produced by the `deptScope` middleware (`{}` for
-admin/Dean Infra, `{ department: user.department }` otherwise). Returns an array,
-newest first — an empty array (no matching complaints) is a valid `200` result, not a
-`404`, since "no complaints in your department" isn't an error condition for a listing
-endpoint.
+Scoping is computed from the *authenticated user's role*, not a shared `deptScope`
+middleware — a plain department filter isn't enough here, because HOD and Dean Infra
+should only see complaints currently sitting **at their level**, not every complaint
+ever raised in their department/system. Concretely:
+
+- `admin` — everything, no filter.
+- `labIncharge` — every complaint in their own department, at any level (they raised/
+  handle the whole department queue).
+- `hod` — only their department's complaints where `currentLevel === "hod"`; a
+  complaint still with the Lab Incharge, or already resolved/escalated past HOD, is not
+  in this view.
+- `deanInfra` — only complaints where `currentLevel === "deanInfra"`, across **all**
+  departments (Dean Infra is unscoped by department, same as `admin`, but still filtered
+  to their own level).
+
+Returns an array, newest first — an empty array (no matching complaints) is a valid
+`200` result, not a `404`, since "nothing currently at your level" isn't an error
+condition for a listing endpoint.
 
 ## Model (`src/models/complaint.model.js`)
 
@@ -294,9 +329,11 @@ existing `list` endpoint: query-param filtering (by `status`/`currentLevel`), pa
 and summary counts. `GET /complaints` today returns the full department-scoped result
 set with no filtering or paging.
 
-Also still true: `deptScope` middleware is only used on the `list` route.
-`escalate`/`resolve` still duplicate the equivalent admin/Dean-Infra-bypass +
-department-match logic inline in the service rather than going through `deptScope` — see
+Also still true: `list` no longer uses the `deptScope` middleware at all — its
+role/level-aware scoping (`buildComplaintScope`) lives entirely in
+`complaint.service.js`, separately from `escalate`/`resolve`'s own inline
+`assertDeptAccess` check and from `deptScope` (now only used on the PC health-card
+route). All three implementations independently re-derive the same admin/Dean-Infra-
+unscoped rule — behaviorally consistent, but three separate places to keep in sync — see
 [`middlewares.md`](./middlewares.md#deptscope) and
-[`known-issues.md`](./known-issues.md). The two implementations are now behaviorally
-consistent (both treat admin and Dean Infra as unscoped), just not unified into one place.
+[`known-issues.md`](./known-issues.md).

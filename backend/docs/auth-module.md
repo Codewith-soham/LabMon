@@ -12,43 +12,56 @@ Files involved:
 - `src/utils/mailer.js`
 - `src/config/constants.js` (`OTP_PURPOSE`, `OTP_EXPIRY_MINUTES`)
 
-This is not simple email+password login — it's a **two-step, OTP-gated flow** for both
-registration and login. Nothing issues a session/JWT until an OTP sent to the user's
-email has been verified.
+Registration is a **two-step, OTP-gated flow** (an OTP sent to the user's email must be
+verified before the account is usable). Login, by contrast, is a **plain password
+check that issues tokens directly** — the login-OTP step (`POST /verify-login-otp`) that
+used to sit between password check and token issuance has been removed from the code.
 
 ## Routes (`src/routes/auth.route.js`)
 
 ```js
 router.post("/register", register)
 router.post("/verify-email", verifyEmail)
+router.post("/resend-otp", resend)
 router.post("/login", login)
-router.post("/verify-login-otp", verifyLogin)
+router.post("/refresh-token", refresh)
+router.post("/logout", auth, logout)
+router.get("/me", auth, me)
 ```
 
-All four are public (no `auth` middleware) — that's correct, since they're the
-pre-authentication flow itself. Mounted at `/api/v1/auth` in `app.js`, so the live paths
-are `/api/v1/auth/register`, `/api/v1/auth/verify-email`, `/api/v1/auth/login`,
-`/api/v1/auth/verify-login-otp`.
+All but `logout` and `me` are public (no `auth` middleware) — that's correct for
+`register`/`verify-email`/`resend-otp`/`login`/`refresh-token`, since they're the
+pre-authentication flow itself; `refresh-token` authenticates via the `refreshToken`
+cookie instead of a Bearer access token. Mounted at `/api/v1/auth` in `app.js`, so the
+live paths are `/api/v1/auth/register`, `/api/v1/auth/verify-email`,
+`/api/v1/auth/resend-otp`, `/api/v1/auth/login`, `/api/v1/auth/refresh-token`,
+`/api/v1/auth/logout`, `/api/v1/auth/me`.
 
-## The two independent OTP flows
+## Registration's OTP flow, and login's lack of one
 
-The `User` model has a single shared set of OTP fields (`otp`, `otpExpiry`,
-`otpPurpose`) reused for two different purposes, disambiguated by `OTP_PURPOSE`
-(`emailVerification` | `login`, from `constants.js`). Only one OTP can be "live" on a
-user at a time — issuing a new one overwrites the old one's hash/expiry/purpose.
+The `User` model has a shared set of OTP fields (`otp`, `otpExpiry`, `otpPurpose`),
+disambiguated by `OTP_PURPOSE` from `constants.js`. Since login no longer issues an
+OTP, `OTP_PURPOSE.EMAIL_VERIFICATION` is currently the only purpose in the enum — kept
+as a lookup table rather than a single hardcoded string so a future OTP-gated flow
+(e.g. password reset) can add a purpose without touching every call site that reads
+`user.otpPurpose`.
 
 ```mermaid
 flowchart LR
     subgraph A["Flow A: Registration"]
         direction LR
         A1(["POST /register"]) --> A2(["POST /verify-email"])
+        A3(["POST /resend-otp"]) -.->|"if OTP expired"| A2
     end
     subgraph B["Flow B: Login"]
         direction LR
-        B1(["POST /login"]) --> B2(["POST /verify-login-otp"])
+        B1(["POST /login\n(password check)"])
     end
     A2 -.->|"account now usable for"| B1
-    B2 -->|"issues"| T["JWT access + refresh\n(httpOnly cookies)"]
+    B1 -->|"issues directly"| T["JWT access + refresh\n(httpOnly cookies)"]
+    T -->|"access token expires"| R(["POST /refresh-token"])
+    R -->|"rotates"| T
+    T --> L(["POST /logout"])
 ```
 
 ### Flow A: Registration + email verification
@@ -86,52 +99,68 @@ can self-register as any role. This is flagged in
 [`known-issues.md`](./known-issues.md); `backend/Readme.md`'s planned API surface says
 registration should be "Admin only."
 
-### Flow B: Login (password check, then OTP, then tokens)
+### Flow B: Login (password check issues tokens directly)
 
 ```mermaid
 sequenceDiagram
     participant Client
-    participant API as loginUser() / verifyLoginOtp()
+    participant API as loginUser()
     participant DB as User (Mongo)
-    participant Mail as sendOtpEmail
 
     Client->>API: POST /login { email, password }
     API->>DB: find user by email
     DB-->>API: 401 "Invalid email or password" if not found
     API->>API: 401 same message if comparePassword() fails
     API->>API: 403 "Please verify your email before logging in" if !isEmailVerified
-    API->>DB: issueOtp(user, OTP_PURPOSE.LOGIN)
-    API->>Mail: sendOtpEmail
-    API-->>Client: 200 { email }, "OTP sent..." — no tokens, no cookies yet
-
-    Client->>API: POST /verify-login-otp { email, otp }
-    API->>DB: find user by email
-    DB-->>API: 401 "Invalid email or OTP" if not found
-    API->>API: 400 if otpPurpose != LOGIN or otp/otpExpiry missing
-    API->>API: 400 if otpExpiry has passed
-    API->>API: 400 "Invalid OTP" if bcrypt compare fails
-    API->>API: clear otp/otpExpiry/otpPurpose (in memory)
     API->>API: generateAccessToken(user), generateRefreshToken(user)
-    API->>DB: refreshToken = bcrypt.hash(refreshToken, 10); save
+    API->>DB: refreshToken = hash(refreshToken); save
     API-->>Client: 200 { user } + httpOnly accessToken/refreshToken cookies
 ```
 
-1. `POST /login` — validates credentials, issues an OTP, but does **not** create a
-   session (deliberately the same 401 message for "no such user" and "wrong password",
-   so a caller can't tell which part was wrong).
-2. `POST /verify-login-otp` — checks the OTP and only then mints tokens, hashing the
-   refresh token before storing it (so the DB can't be used to replay a valid refresh
-   token even if leaked), and strips the password before returning the user.
+`loginUser` validates credentials (deliberately the same 401 message for "no such user"
+and "wrong password", so a caller can't tell which part was wrong), rejects unverified
+accounts with 403, then mints both tokens and persists a hash of the refresh token in
+one step — there is no separate OTP round trip between password check and session
+creation.
 
-`loginUser` and `verifyLoginOtp` are two separate service calls corresponding to two
-separate HTTP requests — the *password* check happens in `/login`, but the *session* is
-only established in `/verify-login-otp`. This means a stolen password alone is
-insufficient without also intercepting the OTP email — the OTP step functions as a
-second factor, not just an email-verification gate.
+### Token refresh and logout
+
+```mermaid
+sequenceDiagram
+    participant Client
+    participant API as refreshAccessToken() / logoutUser()
+    participant DB as User (Mongo)
+
+    Client->>API: POST /refresh-token (refreshToken cookie)
+    API->>API: 401 if cookie missing or jwt.verify fails
+    API->>DB: find user by decoded.userId
+    DB-->>API: 401 "Invalid refresh token" if not found or user.refreshToken unset
+    API->>API: 401 if candidate token doesn't match stored hash
+    API->>API: rotate: generateAccessToken + generateRefreshToken
+    API->>DB: refreshToken = hash(new refreshToken); save
+    API-->>Client: 200, new httpOnly accessToken/refreshToken cookies
+
+    Client->>API: POST /logout (auth-protected)
+    API->>DB: user.refreshToken = undefined; save
+    API-->>Client: 200, clears both cookies
+```
+
+`/refresh-token` rotates on every redemption (issues *and stores* a brand-new refresh
+token, not just a new access token) — so a leaked-but-unused old refresh token can no
+longer be replayed once the legitimate client redeems it. `/logout` requires `auth`
+(a valid access token) and clears the stored `refreshToken` hash server-side in addition
+to clearing both cookies, so a stolen refresh token stops working immediately after
+logout rather than lingering until it expires.
+
+There's also `GET /me` (auth-protected) — `getCurrentUser(userId)` re-fetches the user
+by the id embedded in the access token, used to rehydrate the frontend's session (e.g.
+on page load) from the cookie alone, without requiring the client to have cached the
+user object itself.
 
 ## Cookie issuance (`src/controllers/auth.controller.js`)
 
-Only `verifyLogin` sets cookies, since that's the point where tokens are minted:
+`login` and `refresh` both set cookies, since both are points where tokens are minted;
+`logout` clears them:
 
 ```js
 const cookieOptions = {
@@ -140,21 +169,23 @@ const cookieOptions = {
     sameSite: "strict"                               // not sent on cross-site requests
 }
 
-res.cookie("accessToken", accessToken, { ...cookieOptions, maxAge: 15 * 60 * 1000 })       // 15m
-   .cookie("refreshToken", refreshToken, { ...cookieOptions, maxAge: 7 * 24 * 60 * 60 * 1000 }) // 7d
+const ACCESS_TOKEN_MAX_AGE = parseExpiryToMs(process.env.JWT_ACCESS_EXPIRY)
+const REFRESH_TOKEN_MAX_AGE = parseExpiryToMs(process.env.JWT_REFRESH_EXPIRY)
+
+res.cookie("accessToken", accessToken, { ...cookieOptions, maxAge: ACCESS_TOKEN_MAX_AGE })
+   .cookie("refreshToken", refreshToken, { ...cookieOptions, maxAge: REFRESH_TOKEN_MAX_AGE })
 ```
 
-The comment in the code notes these `maxAge` values are meant to match
-`JWT_ACCESS_EXPIRY`/`JWT_REFRESH_EXPIRY` from `.env` — but they're hardcoded here, not
-read from env, so if those env vars are ever changed the cookie `maxAge` and the JWT's
-actual `exp` claim can silently drift out of sync (cookie could expire before/after the
-token itself).
+`maxAge` is now derived from `JWT_ACCESS_EXPIRY`/`JWT_REFRESH_EXPIRY` via
+`parseExpiryToMs` (`tokenGeneration.js`) rather than hardcoded, so the cookie lifetime
+and the JWT's actual `exp` claim can no longer drift apart if those env vars change.
 
 ## Token generation (`src/utils/tokenGeneration.js`)
 
 ```js
 generateAccessToken(user) -> jwt.sign({ id: user._id, role: user.role, department: user.department }, JWT_ACCESS_TOKEN, { expiresIn: JWT_ACCESS_EXPIRY })
 generateRefreshToken(user) -> jwt.sign({ userId: user._id }, JWT_REFRESH_TOKEN, { expiresIn: JWT_REFRESH_EXPIRY })
+parseExpiryToMs(expiry)     -> parses "15m"/"7d"/"30s"/"1h"-style expiresIn strings into milliseconds, for cookie maxAge
 ```
 
 The **access token's payload is what every downstream middleware relies on** — this is
@@ -162,14 +193,21 @@ the exact shape `auth.middleware.js` decodes into `req.user`, and it's why
 `req.user.role`, `req.user.department`, and `req.user.id` are available everywhere
 downstream (`roleCheck`, `deptScope`, `complaint.service.js`). The refresh token payload
 (`userId`) is intentionally minimal (no role/department) since it should only ever be
-used to mint a new access token, not to authorize actions directly. Note the field name
-asymmetry: access token payload uses `id`, refresh token payload uses `userId` — there
-is currently no refresh/rotate endpoint that would need to reconcile the two (see
-[`known-issues.md`](./known-issues.md)).
+used to mint a new access token, not to authorize actions directly — `refreshAccessToken`
+looks it up as `decoded.userId` while `auth.middleware.js` reads the access token's `id`,
+so the field name asymmetry is deliberate, not a bug.
 
 Both secrets/expiries come straight from env vars: `JWT_ACCESS_TOKEN`,
 `JWT_ACCESS_EXPIRY`, `JWT_REFRESH_TOKEN`, `JWT_REFRESH_EXPIRY` (per `CLAUDE.md` /
 `backend/Readme.md`).
+
+The stored refresh-token hash is not a plain `bcrypt.hash(token, 10)` — `auth.service.js`
+first SHA-256s the raw JWT to a fixed 64-char digest, then bcrypts *that*
+(`hashRefreshToken`/`compareRefreshToken`). bcrypt silently truncates input past 72
+bytes, and a refresh-token JWT routinely exceeds that, so two different tokens sharing
+a 72-byte prefix (same header + `userId` claim, differing only in `iat`/`exp` near the
+end) would otherwise hash identically; SHA-256ing first makes the full token actually
+determine the stored hash.
 
 ## OTP mechanics (`src/utils/otp.js`)
 
@@ -228,8 +266,8 @@ otpPurpose:    String, enum: Object.values(OTP_PURPOSE), select: false
 
 `select: false` on the three OTP fields means a plain `User.findOne({ email })` will
 **not** return them — `auth.service.js` explicitly opts back in with
-`.select("+otp +otpExpiry +otpPurpose")` in both `verifyEmailOtp` and
-`verifyLoginOtp`. This is a deliberate leak-reduction measure: any other code path that
+`.select("+otp +otpExpiry +otpPurpose")` in `verifyEmailOtp` (and `resendOtp`). This is
+a deliberate leak-reduction measure: any other code path that
 fetches a user (e.g. the health-card/complaint flows, if they ever populate a user) gets
 the OTP hash/expiry only if it explicitly asks for it.
 
@@ -257,12 +295,12 @@ See [`middlewares.md`](./middlewares.md#auth) for the consuming side — in shor
 
 ## Notable gaps in this module (see also `known-issues.md`)
 
-- **No refresh-token endpoint.** `refreshToken` is generated, hashed, and stored, but
-  there's no route to redeem it for a new access token once the 15-minute access token
-  expires — a user's only option today is to log in again.
-- **No logout endpoint.** Nothing clears the `refreshToken` on the user or clears the
-  cookies.
 - **Registration is unauthenticated and unrestricted by role.** Anyone can `POST
-  /register` with `role: "admin"`.
-- **No "resend OTP" endpoint.** An expired registration OTP requires registering again
-  (which will 409 on the duplicate email — see `known-issues.md`).
+  /register` with `role: "admin"` — there's no `auth`/`roleCheck` on `/register` at all.
+- **`resendOtp` doesn't verify the caller owns the email.** It only takes
+  `{ email, purpose }` in the body — no OTP, password, or session is required to trigger
+  a fresh OTP send to an arbitrary email address (rate-limit-able spam vector, not an
+  account-takeover one, since nothing about the account changes until the correct OTP
+  comes back).
+- **No rate limiting** on `POST /login` (repeated password attempts) or `POST
+  /resend-otp` — see Phase 6 (security hardening) in [`phases.md`](./phases.md).

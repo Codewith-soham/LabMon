@@ -104,20 +104,22 @@ Used by:
 
 ```js
 export const OTP_PURPOSE = {
-    EMAIL_VERIFICATION: "emailVerification",
-    LOGIN: "login"
+    EMAIL_VERIFICATION: "emailVerification"
 }
 ```
 
-Distinguishes what an outstanding OTP on a `User` document is *for*, since both
-email-verification and login share the same `otp`/`otpExpiry` fields on the user model.
-Prevents an OTP issued for one purpose being accepted for the other.
+Distinguishes what an outstanding OTP on a `User` document is *for*. Login no longer
+issues or checks an OTP (the login-OTP step was removed from the auth flow — login now
+just checks the password and issues JWT cookies directly), so `EMAIL_VERIFICATION` is
+currently the only purpose; the enum stays a lookup table rather than a single hardcoded
+string so a future OTP-gated flow (e.g. password reset) can add a purpose without
+touching every call site.
 
 Used by:
 - `src/models/user.model.js` — `otpPurpose` field enum.
 - `src/services/auth.service.js` — `issueOtp(user, purpose)` stamps this onto the user;
-  `verifyEmailOtp` and `verifyLoginOtp` each check `user.otpPurpose` matches the
-  purpose they expect before accepting the OTP.
+  `verifyEmailOtp` checks `user.otpPurpose` matches `EMAIL_VERIFICATION` before accepting
+  the OTP and clears it (`user.otpPurpose = undefined`) afterward.
 
 ### `OTP_EXPIRY_MINUTES`
 

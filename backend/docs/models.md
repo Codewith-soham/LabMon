@@ -83,6 +83,8 @@ isEmailVerified: Boolean, default: false
 otp:             String, select: false
 otpExpiry:       Date,   select: false
 otpPurpose:      String, enum: Object.values(OTP_PURPOSE), select: false
+otpAttempts:     Number, default: 0, select: false      // wrong-guess counter (verify-email lockout)
+lastOtpSentAt:   Date,   select: false                  // resend-cooldown timestamp
 ```
 
 Full detail on the auth-related fields (`password`, `refreshToken`, the OTP trio) and

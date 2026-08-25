@@ -6,10 +6,10 @@ Covers `src/services/pc.service.js`, its endpoints in `src/routes/pc.route.js` /
 
 ```mermaid
 flowchart LR
-    Agent(["Python agent"]) -->|"POST /pc/sync\n(no auth)"| Sync["syncPcConfig"]
+    Agent(["Python agent"]) -->|"POST /pc/sync\n(rate-limited + validated, no auth)"| Sync["syncPcConfig"]
     Public(["Public raise-complaint form"]) -->|"GET /pc/lookup/:deadStockNo\n(no auth)"| Lookup["lookupPcByDeadStockNo"]
-    Staff(["Lab Incharge / HOD / Dean Infra"]) -->|"POST /pc/:id/health-card\n(auth + deptScope)"| Health["getPcHealthCard"]
-    Staff -->|"GET /pc/search\n(auth + roleCheck + deptScope)"| Search["searchPcs"]
+    Staff(["Lab Incharge / HOD / Dean Infra / Admin"]) -->|"POST /pc/:id/health-card\n(auth + roleCheck + validate + deptScope)"| Health["getPcHealthCard"]
+    Staff2(["Lab Incharge / HOD / Dean Infra"]) -->|"GET /pc/search\n(auth + roleCheck + deptScope)"| Search["searchPcs"]
     Sync --> DB[("Pc collection")]
     Lookup --> DB
     Health --> DB
@@ -18,7 +18,12 @@ flowchart LR
 
 ## `syncPcConfig(payload)` -> `POST /api/v1/pc/sync`
 
-Agent-facing endpoint. No auth middleware yet (device-key auth is planned, not implemented).
+Agent-facing endpoint. Still no auth middleware (device-key auth is planned, not
+implemented — see [`known-issues.md`](./known-issues.md)), but the route is now behind
+`pcSyncLimiter` (30 requests/min by default, throttling abuse in the absence of real
+device auth) and `validate(syncPcSchema)`, which rejects a malformed body (missing/blank
+`deadStockNo`, wrong types) with a `400` before it reaches the service — see
+[`middlewares.md`](./middlewares.md#validate).
 
 - Requires `payload.deadStockNo`; throws `400` (`"deadStockNo is required"`) if missing.
 - Builds a field-by-field `configSet` from `payload.config` (only keys present and `!== undefined` are included as individual `config.<key>` paths), so an omitted field is left untouched rather than wiped — this is a merge, not a whole-subdocument overwrite. `config.lastSyncedAt` is always stamped server-side with `new Date()`, ignoring/overwriting whatever the agent sent for that field.
@@ -37,8 +42,18 @@ Public, unauthenticated — used by the login-free raise-complaint form to confi
 
 ## `getPcHealthCard(pcId, scope)` -> `POST /api/v1/pc/:id/health-card`
 
-`auth`, `deptScope`.
+`auth`, `roleCheck(LAB_INCHARGE, HOD, DEAN_INFRA, ADMIN)`, `validate(objectIdParamSchema, "params")`, `deptScope`.
 
+`roleCheck` was added here as part of a security-hardening pass — previously this route
+had no role restriction at all, so any authenticated user of any role could fetch a
+health card (department-scoped only, via `deptScope`). The role list is a **superset**
+of `GET /pc/search`'s (which deliberately excludes `admin` — see `pc.search.test.js`),
+not a copy of it, since `healthcard.test.js` expects admin to succeed here. See
+[`known-issues.md`](./known-issues.md).
+
+- `validate(objectIdParamSchema, "params")` rejects a malformed `:id` with a `400` before
+  the controller runs, ahead of (and overlapping with) the service's own
+  `mongoose.Types.ObjectId.isValid` check below.
 - Validates `pcId` is a valid Mongo ObjectId first (`mongoose.Types.ObjectId.isValid`), throwing a clean `400` (`"Invalid PC id"`) instead of letting a malformed id fall through to an uncaught Mongoose `CastError` / generic `500`.
 - `Pc.findOne({ _id: pcId, ...scope })` - `scope` comes from `deptScope` (`{}` for admin/deanInfra, `{ department: req.user.department }` otherwise), so a labIncharge/hod requesting a PC outside their department gets the same `404` as a nonexistent id.
 - Throws `404` (`"Pc not found"`) if no match.

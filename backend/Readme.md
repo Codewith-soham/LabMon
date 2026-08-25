@@ -250,11 +250,42 @@ flowchart LR
 
 ### Environment Variables
 
+Required:
+
 ```text
 PORT=5000
 MONGO_URL=mongodb://127.0.0.1:27017/labmon
 CORS_ORIGIN=http://localhost:3000
+JWT_ACCESS_TOKEN=<secret>
+JWT_ACCESS_EXPIRY=15m
+JWT_REFRESH_TOKEN=<secret>
+JWT_REFRESH_EXPIRY=7d
+SMTP_HOST=
+SMTP_PORT=
+SMTP_SECURE=
+SMTP_USER=
+SMTP_PASS=
+MAIL_FROM=
 ```
+
+Optional (rate limiting and OTP hardening — all have working defaults, only set to override):
+
+```text
+RATE_LIMIT_LOGIN_MAX=10
+RATE_LIMIT_LOGIN_WINDOW_MS=900000
+RATE_LIMIT_OTP_VERIFY_MAX=10
+RATE_LIMIT_OTP_VERIFY_WINDOW_MS=900000
+RATE_LIMIT_OTP_RESEND_MAX=5
+RATE_LIMIT_OTP_RESEND_WINDOW_MS=900000
+RATE_LIMIT_COMPLAINT_MAX=20
+RATE_LIMIT_COMPLAINT_WINDOW_MS=3600000
+RATE_LIMIT_PC_SYNC_MAX=30
+RATE_LIMIT_PC_SYNC_WINDOW_MS=60000
+OTP_MAX_ATTEMPTS=5
+OTP_RESEND_COOLDOWN_SECONDS=60
+```
+
+All rate limits and the OTP resend cooldown are disabled when `NODE_ENV=test` (set automatically by the test files) so the integration test suite's rapid sequential requests aren't throttled.
 
 ### Scripts
 

@@ -65,18 +65,21 @@ Everything planned for this phase is now built.
 **Planned:** Lab Incharge, HOD, and Dean Infra dashboards with backend-enforced
 visibility.
 
-**Actual: partially done.**
+**Actual: mostly done.**
 - Backend: `GET /api/v1/complaint` (role- and escalation-level-scoped list, via
   `buildComplaintScope` in `complaint.service.js`) and `GET /api/v1/pc/search` both
   exist and back real dashboard views. No dedicated aggregation/summary endpoints yet —
-  the frontend derives its own stats from the raw list.
-- Frontend: `LabInchargeHome.jsx` and `HodHome.jsx` are both built (thin wrappers around
-  a shared `ComplaintsDashboard.jsx`, wired to the real complaint-list endpoint).
-  `LaboratoriesPage.jsx` (PC search + health-card modal) is also built. `DeanInfraHome.jsx`
-  is still a stub — and `ComplaintsDashboard` as it stands always renders both
-  escalate/resolve actions, so it isn't yet correct for a Dean Infra view without a role-
-  aware tweak. `EquipmentPage.jsx`/`InventoryPage.jsx`/`RequestsPage.jsx` are also still
-  stubs (out of scope for the complaint/PC dashboards this phase covers).
+  the frontend derives its own stats from the raw list. `getComplaints`/
+  `escalateComplaint`/`resolveComplaint` now populate `department` (previously only
+  `lab`), needed for Dean Infra's cross-department dashboard view.
+- Frontend: `LabInchargeHome.jsx`, `HodHome.jsx`, and `DeanInfraHome.jsx` are all built
+  (thin wrappers around a shared `ComplaintsDashboard.jsx`, wired to the real
+  complaint-list endpoint). `LaboratoriesPage.jsx` (PC search + health-card modal) is
+  also built. `ComplaintsDashboard` now derives `canEscalate` separately from `canAct`
+  (`effectiveRole !== ROLES.DEAN_INFRA`), so Dean Infra only ever sees Resolve, and shows
+  a Department column that Lab Incharge/HOD views omit (they're already
+  department-scoped). `EquipmentPage.jsx`/`InventoryPage.jsx`/`RequestsPage.jsx` are
+  still stubs (out of scope for the complaint/PC dashboards this phase covers).
 
 ## Phase 5: Search (Done)
 
@@ -119,7 +122,7 @@ addition to the implicit unique index on `deadStockNo`. Wired up on the frontend
 | 1. Foundation | Done |
 | 2. Python Agent | Done |
 | 3. Health Card + Complaint Core | Done |
-| 4. Role Dashboards | Partial (Lab Incharge/HOD complaint dashboards and PC search/health-card done; Dean Infra dashboard, Equipment/Inventory/Requests pages, and backend aggregation endpoints still missing) |
+| 4. Role Dashboards | Mostly done (Lab Incharge/HOD/Dean Infra complaint dashboards and PC search/health-card done; Equipment/Inventory/Requests pages and backend aggregation endpoints still missing) |
 | 5. Search | Done |
 | 6. Security Hardening | Partial (Helmet/CORS/audit trail done; rate limiting and request validation missing) |
 | 7. Deployment | Not started |

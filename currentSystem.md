@@ -107,7 +107,7 @@ login is a plain password check that issues tokens directly:
 | PC search | Done |
 | Auth refresh/logout/resend-OTP | Done (these were "missing" in older docs — now implemented) |
 | Department listing | Done (minimal — no admin CRUD yet) |
-| Role dashboards | Partial — Lab Incharge/HOD complaint dashboards and PC search built on the frontend against real endpoints; no backend aggregation/summary endpoints yet (frontend derives its own stats from the raw list); Dean Infra dashboard still a stub |
+| Role dashboards | Done — Lab Incharge/HOD/Dean Infra complaint dashboards and PC search built on the frontend against real endpoints; no backend aggregation/summary endpoints yet (frontend derives its own stats from the raw list) |
 | Admin CRUD for Dept/Lab/User/Pc | Not started |
 | Rate limiting | Not started |
 | Request-body validation library (Zod/Joi) | Not started — relies on Mongoose schema validation only |
@@ -133,13 +133,13 @@ Run from `frontend/`: `npm run dev` (Vite dev server), `npm run build`, `npm run
 
 ### What's actually built
 - **Auth flow** (`features/auth/AuthPage.jsx`; `OtpVerification.jsx`) — login/register forms + OTP verification screen (registration only — there is no login-OTP step to verify), wired to `authService.js` (login, register, logout, refresh, verify-email, resendOtp — no stale `verify-login-otp` call anywhere in the frontend).
-- **Lab Incharge and HOD dashboards** (`features/lab-incharge/LabInchargeHome.jsx`, `features/hod/HodHome.jsx`) — both thin wrappers around a shared `features/complaints/ComplaintsDashboard.jsx`: complaint list/stats, a `Donut.jsx` chart, `ComplaintDetailModal.jsx`/`ResolveComplaintModal.jsx`. Wired to the real `GET /api/v1/complaint` endpoint — no mock data file in the current tree. `ComplaintsDashboard` currently always renders both escalate/resolve actions regardless of role, so it isn't yet correct as-is for a Dean Infra view (no escalation step above Dean Infra).
+- **Lab Incharge, HOD, and Dean Infra dashboards** (`features/lab-incharge/LabInchargeHome.jsx`, `features/hod/HodHome.jsx`, `features/dean-infra/DeanInfraHome.jsx`) — all thin wrappers around a shared `features/complaints/ComplaintsDashboard.jsx`: complaint list/stats, a `Donut.jsx` chart, `ComplaintDetailModal.jsx`/`ResolveComplaintModal.jsx`. Wired to the real `GET /api/v1/complaint` endpoint — no mock data file in the current tree. `ComplaintsDashboard` derives `canEscalate` separately from `canAct` (false when `effectiveRole === ROLES.DEAN_INFRA`), so Dean Infra only ever sees Resolve, matching the backend having no level above it. Dean Infra's view also shows a Department column, since it's the only role that isn't department-scoped — this required the backend to populate `complaint.department` in `complaint.service.js` (previously only `lab` was populated).
 - **Laboratories / PC search** (`features/laboratories/LaboratoriesPage.jsx`, wrapping `PcSearchPage.jsx` + `PcHealthCardModal.jsx`, backed by `pcService.js`) — also real and wired to the real search/lookup endpoints.
 - **Routing** (`app/routes.jsx`) — role-gated routes via `ProtectedRoute.jsx` + `ROLES`/`ROUTES` constants that mirror the backend's role/status enums by hand (`frontend/src/constants/roles.js` has a comment noting it must be kept in sync manually — there's no shared package between frontend/backend).
 - **Auth context** (`app/providers/AuthProvider.jsx`) — minimal: just a `user`/`setUser` React context, no token-refresh-on-expiry logic yet.
 
 ### What's a stub
-`DeanInfraHome.jsx`, `EquipmentPage.jsx`, `InventoryPage.jsx`, `RequestsPage.jsx` are still placeholder components — routed to, but with no real content yet. `src/store/` remains empty (`.gitkeep` only) — no state-management library adopted yet.
+`EquipmentPage.jsx`, `InventoryPage.jsx`, `RequestsPage.jsx` are still placeholder components — routed to, but with no real content yet. `src/store/` remains empty (`.gitkeep` only) — no state-management library adopted yet.
 
 A `frontend/dist/` build output is checked into the tree from a prior `vite build` run.
 
@@ -190,11 +190,14 @@ accurate indefinitely.
 
 ## 7. Suggested next steps (from the roadmap gaps in §3/§4)
 
-1. Add a role-aware prop to `ComplaintsDashboard` (e.g. `allowEscalate`) so it can back
-   `DeanInfraHome` correctly — Dean Infra has no level above it to escalate to, but the
-   shared component currently always renders an escalate action.
-2. Add device-key auth to `POST /pc/sync` and role-restriction to `POST /register`, the
+1. Add device-key auth to `POST /pc/sync` and role-restriction to `POST /register`, the
    two flagged open security gaps.
-3. Decide on Admin CRUD (Dept/Lab/User/Pc) — currently no create/update/delete endpoints
+2. Decide on Admin CRUD (Dept/Lab/User/Pc) — currently no create/update/delete endpoints
    exist for any of these, only reads.
-4. Build out `EquipmentPage`/`InventoryPage`/`RequestsPage`, still stub placeholders.
+3. Build out `EquipmentPage`/`InventoryPage`/`RequestsPage`, still stub placeholders.
+
+Done since the last pass: `ComplaintsDashboard` now derives `canEscalate` separately from
+`canAct` (`effectiveRole !== ROLES.DEAN_INFRA`), so `DeanInfraHome` correctly offers only
+Resolve; a Department column (backed by a new `complaint.department` populate in
+`complaint.service.js`) was added for Dean Infra's cross-department view. See
+[`frontend/docs/frontend-design.md`](./frontend/docs/frontend-design.md) Phase 3.

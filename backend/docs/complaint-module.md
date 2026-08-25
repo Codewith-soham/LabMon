@@ -181,7 +181,7 @@ complaint.currentLevel = nextLevel
 complaint.status = STATUS_FOR_LEVEL[nextLevel]
 complaint.history.push({ level: nextLevel, action: "escalated", by: user.id, at: new Date() })
 await complaint.save()
-await complaint.populate([{ path: "lab", select: "name" }, { path: "history.by", select: "name" }])
+await complaint.populate([{ path: "lab", select: "name" }, { path: "department", select: "name" }, { path: "history.by", select: "name" }])
 ```
 
 Five checks, in order, each a distinct failure mode:
@@ -226,7 +226,7 @@ if (user.role !== complaint.currentLevel) {
 complaint.status = COMPLAINT_STATUS.RESOLVED
 complaint.history.push({ level: complaint.currentLevel, action: "resolved", by: user.id, at: new Date(), note: remarks })
 await complaint.save()
-await complaint.populate([{ path: "lab", select: "name" }, { path: "history.by", select: "name" }])
+await complaint.populate([{ path: "lab", select: "name" }, { path: "department", select: "name" }, { path: "history.by", select: "name" }])
 ```
 
 Same four checks as escalation (existence, terminal state, department scope,
@@ -271,6 +271,7 @@ const getComplaints = async (user) => {
     return Complaint.find(scope)
         .sort({ createdAt: -1 })
         .populate("lab", "name")
+        .populate("department", "name")
         .populate("history.by", "name")
 }
 ```
@@ -293,6 +294,11 @@ ever raised in their department/system. Concretely:
 Returns an array, newest first — an empty array (no matching complaints) is a valid
 `200` result, not a `404`, since "nothing currently at your level" isn't an error
 condition for a listing endpoint.
+
+`department` (like `lab`) is populated down to `{ _id, name }` rather than left as a raw
+ObjectId — added for the Dean Infra frontend dashboard, which is cross-department and
+needs to show which department each complaint belongs to (Lab Incharge/HOD don't need
+this, since their lists are already department-scoped).
 
 ## Model (`src/models/complaint.model.js`)
 

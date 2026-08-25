@@ -1,6 +1,6 @@
 # Utilities (`src/utils/`)
 
-Six small, single-purpose modules. None of them import from `src/models/`,
+Seven small, single-purpose modules. None of them import from `src/models/`,
 `src/controllers/`, or `src/routes/` — they're the leaf dependencies everything else
 builds on.
 
@@ -92,7 +92,7 @@ claim names, how this feeds `auth.middleware.js`) is in
 ## `otp.js` — `src/utils/otp.js`
 
 ```js
-generateOtp()          -> 6-digit zero-padded numeric string
+generateOtp()          -> 6-digit zero-padded numeric string, via crypto.randomInt()
 hashOtp(otp)            -> bcrypt.hash(otp, 10)
 compareOtp(otp, hash)   -> bcrypt.compare(otp, hash)
 ```
@@ -100,8 +100,40 @@ compareOtp(otp, hash)   -> bcrypt.compare(otp, hash)
 Pure OTP primitives with no knowledge of `User`, purposes, or expiry — those concerns
 live in `auth.service.js`'s `issueOtp`. Kept separate so the hashing/generation logic is
 independently testable and reusable if OTPs are ever needed outside the auth flow.
-Full detail in
-[`auth-module.md`](./auth-module.md#otp-mechanics-srcutilsotpjs).
+`generateOtp` uses `crypto.randomInt()` (a CSPRNG) rather than `Math.random()` — the
+latter is not cryptographically strong, and its predictability compounded with an
+unthrottled resend/verify surface used to weaken the OTP's guarantees (see
+[`known-issues.md`](./known-issues.md)). Attempt-count lockout and resend cooldown are
+tracked separately on the `User` model (`otpAttempts`, `lastOtpSentAt`), not here. Full
+detail in [`auth-module.md`](./auth-module.md#otp-mechanics-srcutilsotpjs).
+
+## `scope.js` — `src/utils/scope.js`
+
+```js
+buildDepartmentScope(user)               -> {} for admin/deanInfra, else { department: user.department }
+assertDepartmentAccess(user, dept, msg)  -> throws ApiError(403, msg) if department-locked and dept doesn't match
+buildComplaintScope(user)                -> department scope + hod/deanInfra locked to their own currentLevel
+```
+
+The single source of truth for the "admin/deanInfra operate across all departments,
+everyone else is locked to their own" access rule. This used to be re-derived
+independently in three places — `deptScope` middleware, and two helpers inside
+`complaint.service.js` — behaviorally consistent but with no shared implementation to
+keep them in sync. All three call sites now import from here instead:
+
+- `deptScope` middleware (`src/middlewares/deptScope.middleware.js`) calls
+  `buildDepartmentScope` to produce `req.scope`.
+- `complaint.service.js`'s `escalateComplaint`/`resolveComplaint` call
+  `assertDepartmentAccess(user, complaint.department, message)`, passing the
+  action-specific error message ("...escalate..." vs "...resolve...") so wording is
+  unchanged from before the refactor.
+- `complaint.service.js`'s `getComplaints` calls `buildComplaintScope`, which layers
+  Dean Infra/HOD's escalation-*level* awareness on top of the same department rule (see
+  [`complaint-module.md`](./complaint-module.md#getcomplaintsuser)).
+
+Full detail on the consuming side is in
+[`middlewares.md`](./middlewares.md#deptscope) and
+[`complaint-module.md`](./complaint-module.md).
 
 ## `mailer.js` — `src/utils/mailer.js`
 
@@ -123,7 +155,8 @@ ApiError / ApiResponse   <- used by every controller and every service
 asyncHandler             <- wraps every controller
 tokenGeneration           <- auth.service.js and auth.controller.js
 otp, mailer               <- used only by auth.service.js
+scope                     <- deptScope middleware and complaint.service.js
 ```
 
-`ApiError` and `ApiResponse` are the only two utilities with app-wide reach; the other
-three are auth-specific.
+`ApiError` and `ApiResponse` are the only two utilities with app-wide reach; `scope` is
+shared across a middleware and a service but not app-wide; the rest are auth-specific.

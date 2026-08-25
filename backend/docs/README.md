@@ -16,9 +16,9 @@ actually is (verified by reading every file), not the aspirational roadmap in
   value, why it's centralized, and every file that imports it.
 - [`pc-module.md`](./pc-module.md) — the PC health-card feature end to end: model,
   route, controller, service, and how it's wired to `constants.js` and the middlewares.
-- [`middlewares.md`](./middlewares.md) — `auth`, `deptScope`, `roleCheck`, and
-  `errorHandler` in detail, including the exact request object shape each one produces
-  and consumes.
+- [`middlewares.md`](./middlewares.md) — `auth`, `deptScope`, `roleCheck`,
+  `rateLimiter`, `validate`, and `errorHandler` in detail, including the exact request
+  object shape each one produces and consumes.
 - [`auth-module.md`](./auth-module.md) — registration, OTP email verification, plain
   password login, refresh/logout/me, and JWT/cookie issuance.
 - [`complaint-module.md`](./complaint-module.md) — public complaint submission and the
@@ -26,7 +26,7 @@ actually is (verified by reading every file), not the aspirational roadmap in
 - [`models.md`](./models.md) — every Mongoose schema (`Dept`, `Lab`, `User`, `Pc`,
   `Complaint`) and their relationships.
 - [`utils.md`](./utils.md) — `ApiError`, `ApiResponse`, `asyncHandler`, `tokenGeneration`,
-  `otp`, `mailer`.
+  `otp`, `mailer`, `scope`.
 - [`agent.md`](./agent.md) — the Python collector agent (`agent/collector.py`) and how it
   talks to `/api/v1/pc/sync`.
 - [`known-issues.md`](./known-issues.md) — bugs and gaps found while reading the current

@@ -6,68 +6,69 @@
 // logging the email and emitting an "otp" event - tests listen on that
 // event to read the plaintext OTP instead of a real mailbox.
 
-import { test, before, after } from "node:test"
-import assert from "node:assert/strict"
-import crypto from "node:crypto"
-import dotenv from "dotenv"
-import mongoose from "mongoose"
+import { test, before, after } from "node:test";
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import dotenv from "dotenv";
+import mongoose from "mongoose";
 
-dotenv.config()
+dotenv.config();
+process.env.NODE_ENV = "test";
 
-const { app } = await import("../app.js")
-const { User } = await import("../models/user.model.js")
-const { ROLES, OTP_PURPOSE } = await import("../config/constants.js")
-const { otpEvents } = await import("../utils/mailer.js")
+const { app } = await import("../app.js");
+const { User } = await import("../models/user.model.js");
+const { ROLES, OTP_PURPOSE } = await import("../config/constants.js");
+const { otpEvents } = await import("../utils/mailer.js");
 
-let server
-let baseUrl
-const createdUserIds = []
+let server;
+let baseUrl;
+const createdUserIds = [];
 
 before(async () => {
-    await mongoose.connect(process.env.MONGO_URL)
-    server = app.listen(0)
-    const { port } = server.address()
-    baseUrl = `http://127.0.0.1:${port}`
-})
+  await mongoose.connect(process.env.MONGO_URL);
+  server = app.listen(0);
+  const { port } = server.address();
+  baseUrl = `http://127.0.0.1:${port}`;
+});
 
 after(async () => {
-    if (createdUserIds.length) {
-        await User.deleteMany({ _id: { $in: createdUserIds } })
-    }
-    await mongoose.disconnect()
-    await new Promise((resolve) => server.close(resolve))
-})
+  if (createdUserIds.length) {
+    await User.deleteMany({ _id: { $in: createdUserIds } });
+  }
+  await mongoose.disconnect();
+  await new Promise((resolve) => server.close(resolve));
+});
 
 function randomUser(overrides = {}) {
-    const id = crypto.randomBytes(6).toString("hex")
-    return {
-        name: `Test User ${id}`,
-        email: `test.${id}@labmon.test`,
-        password: `Pw_${crypto.randomBytes(8).toString("hex")}`,
-        role: ROLES.LAB_INCHARGE,
-        ...overrides
-    }
+  const id = crypto.randomBytes(6).toString("hex");
+  return {
+    name: `Test User ${id}`,
+    email: `test.${id}@labmon.test`,
+    password: `Pw_${crypto.randomBytes(8).toString("hex")}`,
+    role: ROLES.LAB_INCHARGE,
+    ...overrides,
+  };
 }
 
 async function postJson(path, payload, extraHeaders = {}) {
-    const res = await fetch(`${baseUrl}${path}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...extraHeaders },
-        body: JSON.stringify(payload)
-    })
-    const body = await res.json()
-    return { res, body }
+  const res = await fetch(`${baseUrl}${path}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...extraHeaders },
+    body: JSON.stringify(payload),
+  });
+  const body = await res.json();
+  return { res, body };
 }
 
 // pulls just the "name=value" pairs back out of Set-Cookie headers so they can
 // be replayed on the next request via a Cookie header (fetch has no cookie jar)
 function cookieHeaderFrom(setCookieHeaders) {
-    return setCookieHeaders.map((c) => c.split(";")[0]).join("; ")
+  return setCookieHeaders.map((c) => c.split(";")[0]).join("; ");
 }
 
 function extractCookie(setCookieHeaders, name) {
-    const match = setCookieHeaders.find((c) => c.startsWith(`${name}=`))
-    return match ? match.split(";")[0].slice(name.length + 1) : undefined
+  const match = setCookieHeaders.find((c) => c.startsWith(`${name}=`));
+  return match ? match.split(";")[0].slice(name.length + 1) : undefined;
 }
 
 // refresh tokens are JWTs signed with second-resolution "iat"; two tokens
@@ -75,261 +76,294 @@ function extractCookie(setCookieHeaders, name) {
 // identical, so rotation tests need to cross a second boundary to be
 // meaningful (otherwise the "old" token IS the "new" token).
 function sleepPastCurrentSecond() {
-    return new Promise((resolve) => setTimeout(resolve, 1000 - (Date.now() % 1000) + 50))
+  return new Promise((resolve) => setTimeout(resolve, 1000 - (Date.now() % 1000) + 50));
 }
 
 async function loginAndVerify(payload) {
-    const { res, body } = await postJson("/api/v1/auth/login", { email: payload.email, password: payload.password })
-    const cookies = res.headers.getSetCookie()
+  const { res, body } = await postJson("/api/v1/auth/login", {
+    email: payload.email,
+    password: payload.password,
+  });
+  const cookies = res.headers.getSetCookie();
 
-    return {
-        body,
-        accessToken: extractCookie(cookies, "accessToken"),
-        refreshToken: extractCookie(cookies, "refreshToken"),
-        cookieHeader: cookieHeaderFrom(cookies)
-    }
+  return {
+    body,
+    accessToken: extractCookie(cookies, "accessToken"),
+    refreshToken: extractCookie(cookies, "refreshToken"),
+    cookieHeader: cookieHeaderFrom(cookies),
+  };
 }
 
 function waitForOtp(email, purpose) {
-    return new Promise((resolve) => {
-        const handler = (payload) => {
-            if (payload.to === email && payload.purpose === purpose) {
-                otpEvents.off("otp", handler)
-                resolve(payload.otp)
-            }
-        }
-        otpEvents.on("otp", handler)
-    })
+  return new Promise((resolve) => {
+    const handler = (payload) => {
+      if (payload.to === email && payload.purpose === purpose) {
+        otpEvents.off("otp", handler);
+        resolve(payload.otp);
+      }
+    };
+    otpEvents.on("otp", handler);
+  });
 }
 
 async function registerRandomUser(overrides = {}) {
-    const payload = randomUser(overrides)
-    const otpPromise = waitForOtp(payload.email, OTP_PURPOSE.EMAIL_VERIFICATION)
-    const { res, body } = await postJson("/api/v1/auth/register", payload)
-    if (res.status === 201) {
-        createdUserIds.push(body.data._id)
-    }
-    const otp = await otpPromise
-    return { payload, res, body, otp }
+  const payload = randomUser(overrides);
+  const otpPromise = waitForOtp(payload.email, OTP_PURPOSE.EMAIL_VERIFICATION);
+  const { res, body } = await postJson("/api/v1/auth/register", payload);
+  if (res.status === 201) {
+    createdUserIds.push(body.data._id);
+  }
+  const otp = await otpPromise;
+  return { payload, res, body, otp };
 }
 
 async function registerAndVerifyUser(overrides = {}) {
-    const { payload, otp } = await registerRandomUser(overrides)
-    await postJson("/api/v1/auth/verify-email", { email: payload.email, otp })
-    return { payload }
+  const { payload, otp } = await registerRandomUser(overrides);
+  await postJson("/api/v1/auth/verify-email", { email: payload.email, otp });
+  return { payload };
 }
 
 test("register - creates a new, unverified user and never returns the password", async () => {
-    const { res, body, payload } = await registerRandomUser()
+  const { res, body, payload } = await registerRandomUser();
 
-    assert.equal(res.status, 201)
-    assert.equal(body.success, true)
-    assert.equal(body.data.email, payload.email)
-    assert.equal(body.data.password, undefined)
-    assert.equal(body.data.isEmailVerified, false)
-})
+  assert.equal(res.status, 201);
+  assert.equal(body.success, true);
+  assert.equal(body.data.email, payload.email);
+  assert.equal(body.data.password, undefined);
+  assert.equal(body.data.isEmailVerified, false);
+});
 
 test("register - rejects a duplicate email with 409", async () => {
-    const { payload } = await registerRandomUser()
+  const { payload } = await registerRandomUser();
 
-    const { res, body } = await postJson("/api/v1/auth/register", payload)
+  const { res, body } = await postJson("/api/v1/auth/register", payload);
 
-    assert.equal(res.status, 409)
-    assert.equal(body.success, false)
-})
+  assert.equal(res.status, 409);
+  assert.equal(body.success, false);
+});
 
 test("verify-email - accepts the correct OTP and marks the user verified", async () => {
-    const { payload, otp } = await registerRandomUser()
+  const { payload, otp } = await registerRandomUser();
 
-    const { res, body } = await postJson("/api/v1/auth/verify-email", { email: payload.email, otp })
+  const { res, body } = await postJson("/api/v1/auth/verify-email", { email: payload.email, otp });
 
-    assert.equal(res.status, 200)
-    assert.equal(body.success, true)
-    assert.equal(body.data.isEmailVerified, true)
-})
+  assert.equal(res.status, 200);
+  assert.equal(body.success, true);
+  assert.equal(body.data.isEmailVerified, true);
+});
 
 test("verify-email - rejects an incorrect OTP with 400", async () => {
-    const { payload } = await registerRandomUser()
+  const { payload } = await registerRandomUser();
 
-    const { res, body } = await postJson("/api/v1/auth/verify-email", { email: payload.email, otp: "000000" })
+  const { res, body } = await postJson("/api/v1/auth/verify-email", {
+    email: payload.email,
+    otp: "000000",
+  });
 
-    assert.equal(res.status, 400)
-    assert.equal(body.success, false)
-})
+  assert.equal(res.status, 400);
+  assert.equal(body.success, false);
+});
 
 test("resend-otp - reissues an email-verification otp that then verifies successfully", async () => {
-    const { payload } = await registerRandomUser()
+  const { payload } = await registerRandomUser();
 
-    const otpPromise = waitForOtp(payload.email, OTP_PURPOSE.EMAIL_VERIFICATION)
-    const { res, body } = await postJson("/api/v1/auth/resend-otp", {
-        email: payload.email,
-        purpose: OTP_PURPOSE.EMAIL_VERIFICATION
-    })
-    const otp = await otpPromise
+  const otpPromise = waitForOtp(payload.email, OTP_PURPOSE.EMAIL_VERIFICATION);
+  const { res, body } = await postJson("/api/v1/auth/resend-otp", {
+    email: payload.email,
+    purpose: OTP_PURPOSE.EMAIL_VERIFICATION,
+  });
+  const otp = await otpPromise;
 
-    assert.equal(res.status, 200)
-    assert.equal(body.success, true)
+  assert.equal(res.status, 200);
+  assert.equal(body.success, true);
 
-    const { res: verifyRes, body: verifyBody } = await postJson("/api/v1/auth/verify-email", { email: payload.email, otp })
+  const { res: verifyRes, body: verifyBody } = await postJson("/api/v1/auth/verify-email", {
+    email: payload.email,
+    otp,
+  });
 
-    assert.equal(verifyRes.status, 200)
-    assert.equal(verifyBody.data.isEmailVerified, true)
-})
+  assert.equal(verifyRes.status, 200);
+  assert.equal(verifyBody.data.isEmailVerified, true);
+});
 
 test("resend-otp - rejects an email-verification resend for an already-verified account (400)", async () => {
-    const { payload } = await registerAndVerifyUser()
+  const { payload } = await registerAndVerifyUser();
 
-    const { res, body } = await postJson("/api/v1/auth/resend-otp", {
-        email: payload.email,
-        purpose: OTP_PURPOSE.EMAIL_VERIFICATION
-    })
+  const { res, body } = await postJson("/api/v1/auth/resend-otp", {
+    email: payload.email,
+    purpose: OTP_PURPOSE.EMAIL_VERIFICATION,
+  });
 
-    assert.equal(res.status, 400)
-    assert.equal(body.success, false)
-})
+  assert.equal(res.status, 400);
+  assert.equal(body.success, false);
+});
 
 test("resend-otp - rejects an unknown email with 404", async () => {
-    const { res, body } = await postJson("/api/v1/auth/resend-otp", {
-        email: `nobody.${crypto.randomBytes(6).toString("hex")}@labmon.test`,
-        purpose: OTP_PURPOSE.EMAIL_VERIFICATION
-    })
+  const { res, body } = await postJson("/api/v1/auth/resend-otp", {
+    email: `nobody.${crypto.randomBytes(6).toString("hex")}@labmon.test`,
+    purpose: OTP_PURPOSE.EMAIL_VERIFICATION,
+  });
 
-    assert.equal(res.status, 404)
-    assert.equal(body.success, false)
-})
+  assert.equal(res.status, 404);
+  assert.equal(body.success, false);
+});
 
 test("resend-otp - rejects an invalid purpose with 400", async () => {
-    const { payload } = await registerRandomUser()
+  const { payload } = await registerRandomUser();
 
-    const { res, body } = await postJson("/api/v1/auth/resend-otp", {
-        email: payload.email,
-        purpose: "not-a-real-purpose"
-    })
+  const { res, body } = await postJson("/api/v1/auth/resend-otp", {
+    email: payload.email,
+    purpose: "not-a-real-purpose",
+  });
 
-    assert.equal(res.status, 400)
-    assert.equal(body.success, false)
-})
+  assert.equal(res.status, 400);
+  assert.equal(body.success, false);
+});
 
 test("login - rejects an unverified account with 403", async () => {
-    const { payload } = await registerRandomUser()
+  const { payload } = await registerRandomUser();
 
-    const { res, body } = await postJson("/api/v1/auth/login", {
-        email: payload.email,
-        password: payload.password
-    })
+  const { res, body } = await postJson("/api/v1/auth/login", {
+    email: payload.email,
+    password: payload.password,
+  });
 
-    assert.equal(res.status, 403)
-    assert.equal(body.success, false)
-})
+  assert.equal(res.status, 403);
+  assert.equal(body.success, false);
+});
 
 test("login - succeeds with correct credentials and issues auth cookies directly", async () => {
-    const { payload } = await registerAndVerifyUser()
+  const { payload } = await registerAndVerifyUser();
 
-    const { res, body } = await postJson("/api/v1/auth/login", {
-        email: payload.email,
-        password: payload.password
-    })
-    const cookies = res.headers.getSetCookie()
+  const { res, body } = await postJson("/api/v1/auth/login", {
+    email: payload.email,
+    password: payload.password,
+  });
+  const cookies = res.headers.getSetCookie();
 
-    assert.equal(res.status, 200)
-    assert.equal(body.success, true)
-    assert.equal(body.data.user.email, payload.email)
-    assert.ok(cookies.some((c) => c.startsWith("accessToken=")))
-    assert.ok(cookies.some((c) => c.startsWith("refreshToken=")))
-    assert.ok(cookies.every((c) => /HttpOnly/i.test(c)))
-})
+  assert.equal(res.status, 200);
+  assert.equal(body.success, true);
+  assert.equal(body.data.user.email, payload.email);
+  assert.ok(cookies.some((c) => c.startsWith("accessToken=")));
+  assert.ok(cookies.some((c) => c.startsWith("refreshToken=")));
+  assert.ok(cookies.every((c) => /HttpOnly/i.test(c)));
+});
 
 test("login - rejects an incorrect password with 401", async () => {
-    const { payload } = await registerAndVerifyUser()
+  const { payload } = await registerAndVerifyUser();
 
-    const { res, body } = await postJson("/api/v1/auth/login", {
-        email: payload.email,
-        password: "definitely-the-wrong-password"
-    })
+  const { res, body } = await postJson("/api/v1/auth/login", {
+    email: payload.email,
+    password: "definitely-the-wrong-password",
+  });
 
-    assert.equal(res.status, 401)
-    assert.equal(body.success, false)
-})
+  assert.equal(res.status, 401);
+  assert.equal(body.success, false);
+});
 
 test("login - rejects an unknown email with 401", async () => {
-    const { res, body } = await postJson("/api/v1/auth/login", {
-        email: `nobody.${crypto.randomBytes(6).toString("hex")}@labmon.test`,
-        password: "whatever-password"
-    })
+  const { res, body } = await postJson("/api/v1/auth/login", {
+    email: `nobody.${crypto.randomBytes(6).toString("hex")}@labmon.test`,
+    password: "whatever-password",
+  });
 
-    assert.equal(res.status, 401)
-    assert.equal(body.success, false)
-})
+  assert.equal(res.status, 401);
+  assert.equal(body.success, false);
+});
 
 test("refresh-token - issues a new access/refresh cookie pair for a valid refresh token", async () => {
-    const { payload } = await registerAndVerifyUser()
-    const { refreshToken } = await loginAndVerify(payload)
-    await sleepPastCurrentSecond()
+  const { payload } = await registerAndVerifyUser();
+  const { refreshToken } = await loginAndVerify(payload);
+  await sleepPastCurrentSecond();
 
-    const { res, body } = await postJson("/api/v1/auth/refresh-token", {}, {
-        Cookie: `refreshToken=${refreshToken}`
-    })
-    const cookies = res.headers.getSetCookie()
+  const { res, body } = await postJson(
+    "/api/v1/auth/refresh-token",
+    {},
+    {
+      Cookie: `refreshToken=${refreshToken}`,
+    },
+  );
+  const cookies = res.headers.getSetCookie();
 
-    assert.equal(res.status, 200)
-    assert.equal(body.success, true)
-    assert.ok(cookies.some((c) => c.startsWith("accessToken=")))
-    assert.ok(cookies.some((c) => c.startsWith("refreshToken=")))
-    assert.notEqual(extractCookie(cookies, "refreshToken"), refreshToken)
-})
+  assert.equal(res.status, 200);
+  assert.equal(body.success, true);
+  assert.ok(cookies.some((c) => c.startsWith("accessToken=")));
+  assert.ok(cookies.some((c) => c.startsWith("refreshToken=")));
+  assert.notEqual(extractCookie(cookies, "refreshToken"), refreshToken);
+});
 
 test("refresh-token - rejects a request with no refresh token cookie (401)", async () => {
-    const { res, body } = await postJson("/api/v1/auth/refresh-token", {})
+  const { res, body } = await postJson("/api/v1/auth/refresh-token", {});
 
-    assert.equal(res.status, 401)
-    assert.equal(body.success, false)
-})
+  assert.equal(res.status, 401);
+  assert.equal(body.success, false);
+});
 
 test("refresh-token - rejects a garbage/invalid refresh token (401)", async () => {
-    const { res, body } = await postJson("/api/v1/auth/refresh-token", {}, {
-        Cookie: "refreshToken=not-a-real-token"
-    })
+  const { res, body } = await postJson(
+    "/api/v1/auth/refresh-token",
+    {},
+    {
+      Cookie: "refreshToken=not-a-real-token",
+    },
+  );
 
-    assert.equal(res.status, 401)
-    assert.equal(body.success, false)
-})
+  assert.equal(res.status, 401);
+  assert.equal(body.success, false);
+});
 
 test("refresh-token - rejects a token that was already rotated away by a prior refresh (401)", async () => {
-    const { payload } = await registerAndVerifyUser()
-    const { refreshToken } = await loginAndVerify(payload)
-    await sleepPastCurrentSecond()
+  const { payload } = await registerAndVerifyUser();
+  const { refreshToken } = await loginAndVerify(payload);
+  await sleepPastCurrentSecond();
 
-    await postJson("/api/v1/auth/refresh-token", {}, { Cookie: `refreshToken=${refreshToken}` })
-    await sleepPastCurrentSecond()
-    const { res, body } = await postJson("/api/v1/auth/refresh-token", {}, { Cookie: `refreshToken=${refreshToken}` })
+  await postJson("/api/v1/auth/refresh-token", {}, { Cookie: `refreshToken=${refreshToken}` });
+  await sleepPastCurrentSecond();
+  const { res, body } = await postJson(
+    "/api/v1/auth/refresh-token",
+    {},
+    { Cookie: `refreshToken=${refreshToken}` },
+  );
 
-    assert.equal(res.status, 401)
-    assert.equal(body.success, false)
-})
+  assert.equal(res.status, 401);
+  assert.equal(body.success, false);
+});
 
 test("logout - clears auth cookies and revokes the stored refresh token", async () => {
-    const { payload } = await registerAndVerifyUser()
-    const { accessToken, refreshToken } = await loginAndVerify(payload)
+  const { payload } = await registerAndVerifyUser();
+  const { accessToken, refreshToken } = await loginAndVerify(payload);
 
-    const { res, body } = await postJson("/api/v1/auth/logout", {}, {
-        Authorization: `Bearer ${accessToken}`
-    })
-    const cookies = res.headers.getSetCookie()
+  const { res, body } = await postJson(
+    "/api/v1/auth/logout",
+    {},
+    {
+      Authorization: `Bearer ${accessToken}`,
+    },
+  );
+  const cookies = res.headers.getSetCookie();
 
-    assert.equal(res.status, 200)
-    assert.equal(body.success, true)
-    assert.ok(cookies.some((c) => c.startsWith("accessToken=") && /Expires=Thu, 01 Jan 1970/i.test(c)))
-    assert.ok(cookies.some((c) => c.startsWith("refreshToken=") && /Expires=Thu, 01 Jan 1970/i.test(c)))
+  assert.equal(res.status, 200);
+  assert.equal(body.success, true);
+  assert.ok(
+    cookies.some((c) => c.startsWith("accessToken=") && /Expires=Thu, 01 Jan 1970/i.test(c)),
+  );
+  assert.ok(
+    cookies.some((c) => c.startsWith("refreshToken=") && /Expires=Thu, 01 Jan 1970/i.test(c)),
+  );
 
-    const { res: refreshRes } = await postJson("/api/v1/auth/refresh-token", {}, {
-        Cookie: `refreshToken=${refreshToken}`
-    })
-    assert.equal(refreshRes.status, 401)
-})
+  const { res: refreshRes } = await postJson(
+    "/api/v1/auth/refresh-token",
+    {},
+    {
+      Cookie: `refreshToken=${refreshToken}`,
+    },
+  );
+  assert.equal(refreshRes.status, 401);
+});
 
 test("logout - rejects a request with no Authorization header (401)", async () => {
-    const { res, body } = await postJson("/api/v1/auth/logout", {})
+  const { res, body } = await postJson("/api/v1/auth/logout", {});
 
-    assert.equal(res.status, 401)
-    assert.equal(body.success, false)
-})
+  assert.equal(res.status, 401);
+  assert.equal(body.success, false);
+});

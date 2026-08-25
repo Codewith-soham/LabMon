@@ -1,8 +1,8 @@
-import { Router } from "express"
-import { getDepartments } from "../controllers/dept.controller.js"
+import { Router } from "express";
+import { getDepartments } from "../controllers/dept.controller.js";
 
-const router = Router()
+const router = Router();
 
-router.get("/", getDepartments)
+router.get("/", getDepartments);
 
-export default router
+export default router;

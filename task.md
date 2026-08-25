@@ -7,34 +7,48 @@ for the full status this list was drawn from.
 
 ## Security (backend)
 
+- [x] ~~No rate limiting anywhere~~ — **done**. `express-rate-limit` now throttles
+      `POST /login`, `POST /verify-email`, `POST /resend-otp`, `POST /complaint`, and
+      `POST /pc/sync` (`src/middlewares/rateLimiter.js`), disabled under `NODE_ENV=test`.
+- [x] ~~`POST /resend-otp` doesn't verify the caller owns the email~~ — **partially
+      done**. Added a per-account resend cooldown (`OTP_RESEND_COOLDOWN_SECONDS`,
+      default 60s, via `User.lastOtpSentAt`) plus rate limiting. Still no proof of actual
+      inbox ownership (no OTP/password/session required to trigger *a* resend, just not
+      unlimited ones) — accepted as a residual gap, not reopened as a task; true
+      ownership verification (e.g. a magic link) would be a separate, larger change.
 - [ ] `POST /register` has no access control — anyone can self-register as any role,
       including `admin`. Restrict registration (e.g. require an existing admin/HOD to
-      create accounts, or otherwise gate the `role` field).
+      create accounts, or otherwise gate the `role` field). Deliberately excluded from
+      the security-hardening pass that closed the other items here.
 - [ ] `POST /pc/sync` has no device authentication — anyone who knows/guesses a
       `deadStockNo` can overwrite that PC's config, or provision a brand-new one if they
       also supply `department`/`lab`. Add a shared secret/device key the agent sends.
-- [ ] `POST /resend-otp` doesn't verify the caller owns the email — it only needs
-      `{ email, purpose }`, no proof of account ownership. Add a check and/or rate-limit
-      per email.
-- [ ] No rate limiting anywhere — especially the public, auth-free endpoints
-      (`POST /complaint`, `POST /pc/sync`, `POST /login`, `POST /resend-otp`). Add
-      `express-rate-limit` or similar.
+      It's now rate-limited (`pcSyncLimiter`, 30/min) and body-validated, but that's
+      throttling, not authentication.
+- [ ] Access tokens aren't revoked on logout — only the refresh token is cleared, so a
+      leaked/stolen access token stays valid until its own expiry. Would need either a
+      revocation list (Redis/DB-backed) or a much shorter access-token TTL; not
+      attempted in the last round since it needs new infra or an architecture decision.
 
 ## Validation (backend)
 
-- [ ] No request-body validation library (Zod/Joi) — relies solely on Mongoose
-      schema-level validation. Add a validation layer, at minimum for the public/
-      unauthenticated routes (`POST /complaint`, `POST /pc/sync`, `POST /register`,
-      `POST /login`).
+- [x] ~~No request-body validation library (Zod/Joi)~~ — **done for everything except
+      `/register`**. Zod schemas (`src/validators/`) + a generic `validate(schema,
+      target)` middleware now cover `POST /login`, `POST /verify-email`,
+      `POST /resend-otp`, `POST /pc/sync`, `POST /pc/:id/health-card` (params),
+      `POST /complaint`, and its escalate/resolve routes. `POST /register` was
+      deliberately left out — add a `registerSchema` when that route's access-control
+      gap above is tackled.
 
 ## Architecture cleanup (backend)
 
-- [ ] Department/level access-scoping logic is implemented independently in three
-      places — `deptScope` middleware (PC health-card route), the inline
-      `assertDeptAccess` check in `complaint.service.js`'s escalate/resolve, and
-      `buildComplaintScope` in `complaint.service.js`'s `getComplaints`. Behaviorally
-      consistent today, but not unified — consolidate into one shared helper so
-      role/scoping changes don't need updating in three places.
+- [x] ~~Department/level access-scoping logic is implemented independently in three
+      places~~ — **done**. Unified into `src/utils/scope.js`
+      (`buildDepartmentScope`, `assertDepartmentAccess`, `buildComplaintScope`), used by
+      `deptScope` middleware and by `complaint.service.js`'s escalate/resolve/
+      getComplaints. Also fixed a related gap found while touching this code:
+      `POST /pc/:id/health-card` had no `roleCheck` at all (any authenticated role could
+      hit it) — now gated to `LAB_INCHARGE`/`HOD`/`DEAN_INFRA`/`ADMIN`.
 
 ## Frontend
 

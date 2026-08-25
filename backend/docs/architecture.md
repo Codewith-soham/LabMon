@@ -59,7 +59,10 @@ flowchart LR
 ```
 
 - **Routes** (`src/routes/`) wire an HTTP method + path to a controller function, and
-  attach any per-route middleware (`auth`, `deptScope`, `roleCheck`).
+  attach any per-route middleware (`auth`, `deptScope`, `roleCheck`, and — on public or
+  otherwise sensitive routes — a rate limiter from `src/middlewares/rateLimiter.js` and a
+  Zod `validate(schema)` from `src/middlewares/validate.middleware.js`, with schemas
+  defined in `src/validators/`; see [`middlewares.md`](./middlewares.md)).
 - **Controllers** (`src/controllers/`) are thin. Each handler is wrapped in
   `asyncHandler` (see [`utils.md`](./utils.md)) so a thrown/rejected error is forwarded
   to Express's error-handling middleware instead of needing a `try/catch` in every

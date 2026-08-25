@@ -21,9 +21,9 @@ used to sit between password check and token issuance has been removed from the 
 
 ```js
 router.post("/register", register)
-router.post("/verify-email", verifyEmail)
-router.post("/resend-otp", resend)
-router.post("/login", login)
+router.post("/verify-email", otpVerifyLimiter, validate(verifyEmailSchema), verifyEmail)
+router.post("/resend-otp", otpResendLimiter, validate(resendOtpSchema), resend)
+router.post("/login", loginLimiter, validate(loginSchema), login)
 router.post("/refresh-token", refresh)
 router.post("/logout", auth, logout)
 router.get("/me", auth, me)
@@ -36,6 +36,14 @@ cookie instead of a Bearer access token. Mounted at `/api/v1/auth` in `app.js`, 
 live paths are `/api/v1/auth/register`, `/api/v1/auth/verify-email`,
 `/api/v1/auth/resend-otp`, `/api/v1/auth/login`, `/api/v1/auth/refresh-token`,
 `/api/v1/auth/logout`, `/api/v1/auth/me`.
+
+`verify-email`, `resend-otp`, and `login` — the three publicly-reachable,
+guessing/spam-sensitive routes — now go through a rate limiter and a Zod `validate`
+schema before their controller (see [`middlewares.md`](./middlewares.md)). `register`
+was deliberately left untouched by this pass — see
+[`known-issues.md`](./known-issues.md). `refresh-token` isn't rate-limited since it
+requires possession of a valid `refreshToken` cookie, which is a much narrower attack
+surface than a bare email/password guess.
 
 ## Registration's OTP flow, and login's lack of one
 
@@ -87,8 +95,9 @@ sequenceDiagram
     API->>API: 400 if isEmailVerified already true
     API->>API: 400 if otpPurpose != EMAIL_VERIFICATION or otp/otpExpiry missing
     API->>API: 400 if otpExpiry has passed
-    API->>API: 400 if otp fails bcrypt.compare against stored hash
-    API->>DB: isEmailVerified = true, clear otp/otpExpiry/otpPurpose\n(save with validateBeforeSave: false)
+    API->>API: 429 if otpAttempts >= OTP_MAX_ATTEMPTS
+    API->>API: 400 if otp fails bcrypt.compare against stored hash (otpAttempts += 1)
+    API->>DB: isEmailVerified = true, clear otp/otpExpiry/otpPurpose, otpAttempts = 0\n(save with validateBeforeSave: false)
     API-->>Client: 200, user (no password), "Email verified successfully"
 ```
 
@@ -212,11 +221,16 @@ determine the stored hash.
 ## OTP mechanics (`src/utils/otp.js`)
 
 ```js
-generateOtp()       -> 6-digit numeric string, zero-padded (e.g. "004821")
+generateOtp()       -> 6-digit numeric string, zero-padded (e.g. "004821"), via crypto.randomInt()
 hashOtp(otp)        -> bcrypt.hash(otp, 10)     stored on user.otp — plaintext OTP is
                                                   never persisted, only its hash
 compareOtp(otp, hash) -> bcrypt.compare(otp, hash)
 ```
+
+`generateOtp` uses Node's `crypto.randomInt()` (a CSPRNG) rather than `Math.random()` —
+the latter is not cryptographically strong, which mattered more once `/verify-email` and
+`/resend-otp` were both reachable with effectively unlimited guesses (see
+[`known-issues.md`](./known-issues.md)).
 
 `issueOtp(user, purpose)` in `auth.service.js` ties these together:
 
@@ -225,12 +239,36 @@ const otp = generateOtp()
 user.otp = await hashOtp(otp)
 user.otpExpiry = new Date(Date.now() + OTP_EXPIRY_MS)   // OTP_EXPIRY_MINUTES * 60_000, from constants.js
 user.otpPurpose = purpose
+user.otpAttempts = 0          // reset on every fresh OTP
+user.lastOtpSentAt = new Date() // stamped for the resend cooldown
 await user.save({ validateBeforeSave: false })
 await sendOtpEmail({ to: user.email, otp, purpose })     // plaintext otp only ever leaves via email
 ```
 
 `OTP_EXPIRY_MINUTES` (10) lives in `constants.js` for the same centralization reason as
-`ROLES`/`COMPLAINT_STATUS` — one place to tune OTP lifetime.
+`ROLES`/`COMPLAINT_STATUS` — one place to tune OTP lifetime. `OTP_MAX_ATTEMPTS` (default
+5, env-overridable) and `OTP_RESEND_COOLDOWN_SECONDS` (default 60, env-overridable) live
+alongside it — see [`constants.md`](./constants.md).
+
+### Guess-lockout and resend cooldown
+
+`verifyEmailOtp` tracks `user.otpAttempts` (a `select: false` field on `User`,
+reset to `0` whenever a fresh OTP is issued or verification succeeds): each wrong guess
+increments it, and once it reaches `OTP_MAX_ATTEMPTS` the endpoint returns `429 "Too many
+incorrect attempts. Please request a new OTP."` instead of comparing the OTP at all — the
+only way out of the lockout is a fresh `/resend-otp` call, which resets the counter.
+
+`resendOtp` tracks `user.lastOtpSentAt`: if a resend is requested again before
+`OTP_RESEND_COOLDOWN_SECONDS` has elapsed since the last one, it returns `429 "Please
+wait N seconds before requesting another OTP"`. This is a cooldown, not proof of
+ownership — it doesn't require an OTP, password, or session, just spaces out repeated
+sends to the same address. See [`known-issues.md`](./known-issues.md) for why full
+ownership verification is still an open gap.
+
+Both checks are skipped when `NODE_ENV === "test"` (the same accommodation
+`rateLimiter.js` makes — see [`middlewares.md`](./middlewares.md#ratelimiter)), since the
+integration test suite calls `/resend-otp` immediately after registration and would
+otherwise trip the cooldown.
 
 ## Email dispatch (`src/utils/mailer.js`)
 
@@ -262,14 +300,17 @@ isEmailVerified: Boolean, default: false
 otp:           String, select: false                 // excluded from queries by default
 otpExpiry:     Date,   select: false
 otpPurpose:    String, enum: Object.values(OTP_PURPOSE), select: false
+otpAttempts:   Number, default: 0, select: false      // wrong-guess counter, see below
+lastOtpSentAt: Date,   select: false                  // resend-cooldown timestamp, see below
 ```
 
-`select: false` on the three OTP fields means a plain `User.findOne({ email })` will
-**not** return them — `auth.service.js` explicitly opts back in with
-`.select("+otp +otpExpiry +otpPurpose")` in `verifyEmailOtp` (and `resendOtp`). This is
-a deliberate leak-reduction measure: any other code path that
-fetches a user (e.g. the health-card/complaint flows, if they ever populate a user) gets
-the OTP hash/expiry only if it explicitly asks for it.
+`select: false` on the five OTP-related fields means a plain `User.findOne({ email })`
+will **not** return them — `auth.service.js` explicitly opts back in with
+`.select("+otp +otpExpiry +otpPurpose +otpAttempts")` in `verifyEmailOtp` and
+`.select("+otp +otpExpiry +otpPurpose +lastOtpSentAt")` in `resendOtp`. This is a
+deliberate leak-reduction measure: any other code path that fetches a user (e.g. the
+health-card/complaint flows, if they ever populate a user) gets these fields only if it
+explicitly asks for them.
 
 ```js
 userSchema.pre("save", async function () {
@@ -297,10 +338,15 @@ See [`middlewares.md`](./middlewares.md#auth) for the consuming side — in shor
 
 - **Registration is unauthenticated and unrestricted by role.** Anyone can `POST
   /register` with `role: "admin"` — there's no `auth`/`roleCheck` on `/register` at all.
-- **`resendOtp` doesn't verify the caller owns the email.** It only takes
-  `{ email, purpose }` in the body — no OTP, password, or session is required to trigger
-  a fresh OTP send to an arbitrary email address (rate-limit-able spam vector, not an
-  account-takeover one, since nothing about the account changes until the correct OTP
-  comes back).
-- **No rate limiting** on `POST /login` (repeated password attempts) or `POST
-  /resend-otp` — see Phase 6 (security hardening) in [`phases.md`](./phases.md).
+  Deliberately out of scope for the security-hardening pass that added rate
+  limiting/validation/OTP hardening to the rest of this module.
+- **`resendOtp` still doesn't verify the caller owns the email**, only that requests are
+  spaced out (`OTP_RESEND_COOLDOWN_SECONDS`) and rate-limited (`otpResendLimiter`). No
+  OTP, password, or session proves inbox ownership — see
+  [`known-issues.md`](./known-issues.md) for why this is an accepted residual gap rather
+  than something still to fix.
+- **`/login` and `/verify-email`/`resend-otp` now have rate limiting and lockout/cooldown
+  mechanisms** (`loginLimiter`, `otpVerifyLimiter`, `otpResendLimiter`, plus
+  `otpAttempts`/`lastOtpSentAt` on `User`) — Phase 6 (security hardening) in
+  [`phases.md`](./phases.md) is partially done; device auth for `/pc/sync` and access-
+  token revocation on logout remain open.

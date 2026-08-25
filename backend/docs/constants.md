@@ -131,6 +131,28 @@ A plain number (not a role/status map). Used by `src/services/auth.service.js` t
 `OTP_EXPIRY_MS` (`OTP_EXPIRY_MINUTES * 60 * 1000`) at module load, which is added to
 `Date.now()` when issuing an OTP.
 
+### `OTP_MAX_ATTEMPTS` / `OTP_RESEND_COOLDOWN_SECONDS`
+
+```js
+export const OTP_MAX_ATTEMPTS = Number(process.env.OTP_MAX_ATTEMPTS) || 5
+export const OTP_RESEND_COOLDOWN_SECONDS = Number(process.env.OTP_RESEND_COOLDOWN_SECONDS) || 60
+```
+
+Two OTP-hardening thresholds, both env-overridable with working defaults (see
+`backend/Readme.md`). `OTP_MAX_ATTEMPTS` is the number of wrong `/verify-email` guesses
+allowed against the current OTP before the endpoint locks out with `429` until a fresh
+OTP is issued; `OTP_RESEND_COOLDOWN_SECONDS` is the minimum gap `/resend-otp` enforces
+between sends to the same account. Unlike the other exports on this page these aren't
+roles/statuses — they're plain tunables, but centralized here for the same reason:
+one place to look, one place to change.
+
+Used by:
+- `src/services/auth.service.js` — `verifyEmailOtp` compares `user.otpAttempts` against
+  `OTP_MAX_ATTEMPTS`; `resendOtp` compares elapsed time since `user.lastOtpSentAt`
+  against `OTP_RESEND_COOLDOWN_SECONDS`. Both checks are skipped when
+  `NODE_ENV === "test"`. See
+  [`auth-module.md`](./auth-module.md#guess-lockout-and-resend-cooldown).
+
 ## Why this file matters architecturally
 
 Every enum-like value that crosses a model/service/middleware boundary in this codebase

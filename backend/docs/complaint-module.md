@@ -32,16 +32,26 @@ Files involved:
 - `src/config/constants.js` (`ROLES`, `COMPLAINT_STATUS`, `NEXT_LEVEL`,
   `STATUS_FOR_LEVEL`)
 - `src/middlewares/auth.middleware.js`, `src/middlewares/roleCheck.middleware.js`
+- `src/middlewares/rateLimiter.js` (`complaintLimiter`), `src/middlewares/validate.middleware.js`
+- `src/validators/complaint.validator.js`, `src/validators/common.validator.js`
+- `src/utils/scope.js` (`assertDepartmentAccess`, `buildComplaintScope`)
 
 ## Routes (`src/routes/complaint.route.js`)
 
 ```js
-router.post("/", raiseComplaint)                                                       // public
-router.patch("/:id/escalate", auth, roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD), escalateComplaint)
-router.patch("/:id/resolve",  auth, roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD, ROLES.DEAN_INFRA), resolveComplaint)
+router.post("/", complaintLimiter, validate(raiseComplaintSchema), raiseComplaint)      // public
+router.patch("/:id/escalate", auth, roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD), validate(objectIdParamSchema, "params"), escalateComplaint)
+router.patch("/:id/resolve",  auth, roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD, ROLES.DEAN_INFRA), validate(objectIdParamSchema, "params"), validate(resolveComplaintSchema), resolveComplaint)
 ```
 
 Mounted (via `app.js`) at `/api/v1/complaint`.
+
+The public `POST /` is throttled by `complaintLimiter` (20/hour by default) and validated
+by `raiseComplaintSchema` (shape/type checks on `deadStockNo`, `description`, and
+`raisedBy.{name,contact}`) before `createComplaint` runs — see
+[`middlewares.md`](./middlewares.md). `escalate`/`resolve` validate `:id` the same way
+`health-card` does now (`objectIdParamSchema`), and `resolve` additionally validates its
+optional `remarks` body field.
 
 Also registered but omitted from the snippet above: `router.get("/track/:token", track)`
 (public tracking lookup) and `router.get("/", auth, list)` (role-scoped listing).
@@ -159,18 +169,12 @@ flowchart TD
 ```
 
 ```js
-// shared by escalate and resolve — mirrors deptScope middleware's rule
-const assertDeptAccess = (user, department, action) => {
-    const isUnscoped = user.role === ROLES.ADMIN || user.role === ROLES.DEAN_INFRA
-    if (!isUnscoped && String(department) !== String(user.department)) {
-        throw new ApiError(403, `You are not authorized to ${action} complaints outside your department`)
-    }
-}
-
+// assertDepartmentAccess now lives in src/utils/scope.js, shared with deptScope
+// middleware and buildComplaintScope below — see utils.md#scope-srcutilsscopejs
 const complaint = await Complaint.findById(complaintId)
 if (!complaint) throw new ApiError(404, "Complaint not found")
 if (complaint.status === COMPLAINT_STATUS.RESOLVED) throw new ApiError(400, "Cannot escalate a resolved complaint")
-assertDeptAccess(user, complaint.department, "escalate")
+assertDepartmentAccess(user, complaint.department, "You are not authorized to escalate complaints outside your department")
 if (user.role !== complaint.currentLevel) {
     throw new ApiError(403, "Only the current level's incharge can escalate this complaint")
 }
@@ -219,7 +223,7 @@ Then: mutate `currentLevel` and `status` together (from the two lookup tables), 
 const complaint = await Complaint.findById(complaintId)
 if (!complaint) throw new ApiError(404, "Complaint not found")
 if (complaint.status === COMPLAINT_STATUS.RESOLVED) throw new ApiError(400, "Complaint is already resolved")
-assertDeptAccess(user, complaint.department, "resolve")
+assertDepartmentAccess(user, complaint.department, "You are not authorized to resolve complaints outside your department")
 if (user.role !== complaint.currentLevel) {
     throw new ApiError(403, "Only the current level's incharge can resolve this complaint")
 }
@@ -256,6 +260,8 @@ Public lookup, deliberately projected down to a small field set — no `departme
 ### `getComplaints(user)`
 
 ```js
+// buildComplaintScope now lives in src/utils/scope.js (shared with deptScope
+// middleware and assertDepartmentAccess) — see utils.md#scope-srcutilsscopejs
 // admin sees everything; labIncharge sees their department's whole queue;
 // hod/deanInfra only see complaints currently escalated to their level (department-
 // scoped for hod, across all departments for deanInfra)
@@ -335,11 +341,10 @@ existing `list` endpoint: query-param filtering (by `status`/`currentLevel`), pa
 and summary counts. `GET /complaints` today returns the full department-scoped result
 set with no filtering or paging.
 
-Also still true: `list` no longer uses the `deptScope` middleware at all — its
-role/level-aware scoping (`buildComplaintScope`) lives entirely in
-`complaint.service.js`, separately from `escalate`/`resolve`'s own inline
-`assertDeptAccess` check and from `deptScope` (now only used on the PC health-card
-route). All three implementations independently re-derive the same admin/Dean-Infra-
-unscoped rule — behaviorally consistent, but three separate places to keep in sync — see
-[`middlewares.md`](./middlewares.md#deptscope) and
-[`known-issues.md`](./known-issues.md).
+Also still true: `list` doesn't use the `deptScope` middleware — its role/level-aware
+scoping (`buildComplaintScope`) is called from `complaint.service.js`, separately from
+`escalate`/`resolve`'s `assertDepartmentAccess` call and from `deptScope` middleware
+(used only on the PC health-card route). All three now share one implementation in
+`src/utils/scope.js` rather than independently re-deriving the same admin/Dean-Infra-
+unscoped rule — see [`utils.md`](./utils.md#scope-srcutilsscopejs) and
+[`middlewares.md`](./middlewares.md#deptscope).

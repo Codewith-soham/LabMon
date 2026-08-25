@@ -1,6 +1,6 @@
 # Known Issues
 
-Bugs and gaps found while reading the current tree (last verified 2026-08-24), so they
+Bugs and gaps found while reading the current tree (last verified 2026-08-26), so they
 don't need to be rediscovered from scratch. Cross-referenced from the module docs where
 relevant. A number of bugs previously listed here (and in `CLAUDE.md`'s older "Known
 issues" section) have since been fixed in the code — see "Already fixed" at the bottom.
@@ -24,33 +24,17 @@ also supports first-time provisioning, create a brand-new PC record by supplying
 unused `deadStockNo` plus a real `department`/`lab` name. See
 [`pc-module.md`](./pc-module.md) and [`agent.md`](./agent.md#no-authentication).
 
-### `POST /resend-otp` doesn't verify the caller owns the email
+### `POST /resend-otp` still doesn't verify the caller owns the email
 
-It only takes `{ email, purpose }` in the body — no OTP, password, or session proves the
-caller controls that inbox. Not an account-takeover vector (nothing about the account
-changes until the *correct* OTP comes back), but it is an unauthenticated way to trigger
-repeated email sends to an arbitrary address. See
+A resend cooldown was added (`OTP_RESEND_COOLDOWN_SECONDS`, default 60s, tracked via
+`User.lastOtpSentAt`) so an anonymous caller can no longer trigger unlimited sends to an
+arbitrary address, and `otpResendLimiter` throttles the route further. Neither of those
+is proof of ownership, though — no OTP, password, or session is required to trigger *a*
+resend, just not unlimited ones. True ownership verification (e.g. a magic link) is out
+of scope for now; this residual gap is an accepted tradeoff, not an oversight. See
 [`auth-module.md`](./auth-module.md#notable-gaps-in-this-module-see-also-known-issuesmd).
 
 ## Design inconsistencies (not bugs, but worth knowing before extending)
-
-### Department/level scoping is implemented three different ways
-
-- `deptScope` middleware — used only on the PC health-card route today. Produces
-  `req.scope` (`{}` for admin/deanInfra, `{ department: user.department }` otherwise).
-- `complaint.service.js`'s `assertDeptAccess` — an inline helper used by
-  `escalateComplaint`/`resolveComplaint`, same admin/deanInfra-bypass + department-match
-  rule, but not routed through `deptScope`.
-- `complaint.service.js`'s `buildComplaintScope` — used by `getComplaints` (the `list`
-  route). More than department scoping: `hod`/`deanInfra` are further filtered to only
-  complaints currently at *their* escalation level, not their whole department/system
-  history.
-
-All three agree on which roles are unscoped (admin, Dean Infra) and are behaviorally
-consistent today, but the same rule is re-derived independently in three places and has
-to be kept in sync by hand if it ever changes. See
-[`middlewares.md`](./middlewares.md#deptscope) and
-[`complaint-module.md`](./complaint-module.md).
 
 ### `/pc/:id/health-card` is a `POST`, not a `GET`
 
@@ -67,10 +51,6 @@ frontend/REST tooling is built expecting `GET` semantics for an idempotent read.
 - Role-dashboard aggregation/summary endpoints (Phase 4) — the frontend would need to
   derive its own stats from the raw `GET /api/v1/complaint` list today.
 - No filtering/pagination on `GET /api/v1/complaint` (Phase 4/5 territory).
-- No rate limiting anywhere (Phase 6) — notably on the public, auth-free `POST
-  /api/v1/complaint`, `POST /api/v1/pc/sync`, and `POST /api/v1/auth/login`/`resend-otp`.
-- No request-body validation library (Zod/Joi) — relies on Mongoose schema validation
-  only.
 
 ## Already fixed (things this doc, or `CLAUDE.md`, used to flag as open)
 
@@ -112,3 +92,31 @@ frontend/REST tooling is built expecting `GET` semantics for an idempotent read.
   simplification, but it means any doc or frontend code still describing/calling
   `verify-login-otp` is now wrong — see
   [`auth-module.md`](./auth-module.md#flow-b-login-password-check-issues-tokens-directly).
+- **Department/level scoping used to be implemented three different ways** (`deptScope`
+  middleware, `complaint.service.js`'s inline `assertDeptAccess`, and its
+  `buildComplaintScope`) — **fixed**: all three now call into a single shared
+  `src/utils/scope.js` (`buildDepartmentScope`, `assertDepartmentAccess`,
+  `buildComplaintScope`), so the admin/deanInfra-unscoped rule is defined exactly once.
+  Behavior is unchanged. See [`utils.md`](./utils.md#scope-srcutilsscopejs).
+- **No rate limiting anywhere** — **fixed**: `src/middlewares/rateLimiter.js`
+  (`express-rate-limit`) now throttles `POST /login`, `POST /verify-email`, `POST
+  /resend-otp`, `POST /complaint`, and `POST /pc/sync`. Disabled under `NODE_ENV=test`.
+- **No request-body validation library** — **fixed**: Zod schemas
+  (`src/validators/`) plus a generic `validate(schema, target)` middleware
+  (`src/middlewares/validate.middleware.js`) now validate shape/type on `POST /login`,
+  `POST /verify-email`, `POST /resend-otp`, `POST /pc/sync`, `POST /pc/:id/health-card`
+  (params), and `POST /complaint` + its escalate/resolve routes. Existing service-layer
+  semantic checks (invalid OTP purpose, etc.) are intentionally left in place — schemas
+  stay looser than those checks so their specific error messages still fire. `POST
+  /register` was deliberately left out of this pass. See
+  [`middlewares.md`](./middlewares.md#validate-srcmiddlewaresvalidatemiddlewarejs).
+- **`POST /verify-email` had no guess-limit and OTPs were generated with `Math.random()`**
+  — **fixed**: `otp.js` now uses `crypto.randomInt()` (a CSPRNG), and `User` gained an
+  `otpAttempts` counter that locks verification out after `OTP_MAX_ATTEMPTS` (default 5)
+  wrong guesses until a fresh OTP is issued. See
+  [`auth-module.md`](./auth-module.md#otp-mechanics-srcutilsotpjs).
+- **`POST /pc/:id/health-card` had no `roleCheck`** — any authenticated user of any role
+  could hit it (department-scoped only) — **fixed**: now gated by
+  `roleCheck(LAB_INCHARGE, HOD, DEAN_INFRA, ADMIN)`, matching the roles actually meant to
+  view health cards (a superset of `GET /pc/search`'s role list, since admin is
+  deliberately excluded from search but allowed on health-card).

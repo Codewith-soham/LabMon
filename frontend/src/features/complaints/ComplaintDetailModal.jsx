@@ -1,6 +1,6 @@
 import { STATUS_META, LEVEL_LABEL, formatDateTime, describeHistoryEntry } from './complaintMeta';
 
-function ComplaintDetailModal({ complaint, canAct, onClose, onEscalate, onResolveClick }) {
+function ComplaintDetailModal({ complaint, canEscalate, canResolve, onClose, onEscalate, onResolveClick }) {
   if (!complaint) return null;
 
   const meta = STATUS_META[complaint.status];
@@ -49,6 +49,10 @@ function ComplaintDetailModal({ complaint, canAct, onClose, onEscalate, onResolv
               <p className="detail-value">{complaint.lab?.name || complaint.lab}</p>
             </div>
             <div>
+              <p className="field-label">Department</p>
+              <p className="detail-value">{complaint.department?.name || complaint.department}</p>
+            </div>
+            <div>
               <p className="field-label">Current Level</p>
               <p className="detail-value">{LEVEL_LABEL[complaint.currentLevel] || complaint.currentLevel}</p>
             </div>
@@ -69,22 +73,26 @@ function ComplaintDetailModal({ complaint, canAct, onClose, onEscalate, onResolv
             ))}
           </ul>
 
-          {canAct && (
+          {(canEscalate || canResolve) && (
             <div className="detail-actions">
-              <button
-                type="button"
-                className="action-btn action-btn--escalate"
-                onClick={() => onEscalate(complaint._id)}
-              >
-                Escalate
-              </button>
-              <button
-                type="button"
-                className="action-btn action-btn--resolve"
-                onClick={() => onResolveClick(complaint)}
-              >
-                Resolve
-              </button>
+              {canEscalate && (
+                <button
+                  type="button"
+                  className="action-btn action-btn--escalate"
+                  onClick={() => onEscalate(complaint._id)}
+                >
+                  Escalate
+                </button>
+              )}
+              {canResolve && (
+                <button
+                  type="button"
+                  className="action-btn action-btn--resolve"
+                  onClick={() => onResolveClick(complaint)}
+                >
+                  Resolve
+                </button>
+              )}
             </div>
           )}
         </div>

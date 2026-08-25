@@ -1,9 +1,10 @@
 import { nanoid } from "nanoid" //used to generate random ID's
 import { Complaint } from "../models/complaint.model.js"
 import { Pc } from "../models/pc.model.js"
-// Never referenced directly below, but escalate/resolve populate("lab", ...) on the
-// complaint doc, which requires the "Lab" schema to be registered with mongoose first.
+// Never referenced directly below, but escalate/resolve populate("lab", ...) / ("department", ...)
+// on the complaint doc, which requires the "Lab"/"Dept" schemas to be registered with mongoose first.
 import "../models/lab.model.js"
+import "../models/department.model.js"
 import { ApiError } from "../utils/ApiError.js"
 import { ROLES, COMPLAINT_STATUS, NEXT_LEVEL, STATUS_FOR_LEVEL } from "../config/constants.js"
 
@@ -86,6 +87,7 @@ const escalateComplaint = async(complaintId, user) => {
     await complaint.save()
     await complaint.populate([
         { path: "lab", select: "name" },
+        { path: "department", select: "name" },
         { path: "history.by", select: "name" }
     ])
 
@@ -122,6 +124,7 @@ const resolveComplaint = async(complaintId, user, remarks) => {
     await complaint.save()
     await complaint.populate([
         { path: "lab", select: "name" },
+        { path: "department", select: "name" },
         { path: "history.by", select: "name" }
     ])
 
@@ -166,6 +169,7 @@ const getComplaints = async(user) => {
     const complaints = await Complaint.find(scope)
         .sort({createdAt: -1}) //will get complaints in descending order
         .populate("lab", "name")
+        .populate("department", "name")
         .populate("history.by", "name")
 
     return complaints

@@ -17,7 +17,7 @@ detail modal reusing `AuthPage.css` classes) rather than inventing a new visual 
 flowchart TD
     P0["Phase 0: Auth Shell"]:::done --> P1["Phase 1: Lab Incharge Dashboard"]:::done
     P1 --> P2["Phase 2: HOD Dashboard"]:::done
-    P2 --> P3["Phase 3: Dean Infra Dashboard"]:::todo
+    P2 --> P3["Phase 3: Dean Infra Dashboard"]:::done
     P0 --> P4["Phase 4: PC Health Card + Search"]:::done
     P0 --> P5["Phase 5: Public Complaint Submission"]:::done
     P1 --> P6["Phase 6: Admin"]:::blocked
@@ -96,7 +96,7 @@ defaultName="HOD" />`. No separate HOD-specific component was built; the "extrac
 shared component" plan from the previous version of this doc is what actually shipped,
 so Phase 3 (Dean Infra) is now just wiring the same component with a different role.
 
-## Phase 3: Dean Infra Dashboard — Not started (`DeanInfraHome.jsx` is a stub)
+## Phase 3: Dean Infra Dashboard — Done
 
 Backend: `GET /complaint` (for `deanInfra`, `buildComplaintScope` returns
 `{ currentLevel: ROLES.DEAN_INFRA }` — no department filter, since Dean Infra is
@@ -104,14 +104,22 @@ cross-department, but still narrowed to complaints currently at their level),
 `PATCH /complaint/:id/resolve` only — Dean Infra is the last level, there is no further
 escalate target (`NEXT_LEVEL` has no entry past `deanInfra`).
 
-- Same shared `ComplaintsDashboard` component as Phase 1/2, just
-  `<ComplaintsDashboard role={ROLES.DEAN_INFRA} .../>` — but `ComplaintsDashboard` as it
-  exists today always renders both Escalate and Resolve action buttons whenever
-  `canAct(complaint)` is true, so it needs a small change (e.g. an `allowEscalate` prop)
-  before it's correct for Dean Infra, which should only ever offer Resolve.
-- Since Dean Infra isn't department-scoped, the table may want a Department column that
-  Lab Incharge/HOD views don't need (they already know their own department) — not
-  present in the shared component today.
+`features/dean-infra/DeanInfraHome.jsx` is the same thin-wrapper pattern as Lab
+Incharge/HOD: `<ComplaintsDashboard role={ROLES.DEAN_INFRA} subtitle="DEAN INFRA"
+defaultName="Dean Infra" />`.
+
+- `ComplaintsDashboard.jsx` now derives `canEscalate(complaint)` separately from
+  `canAct(complaint)` (`canAct(complaint) && effectiveRole !== ROLES.DEAN_INFRA`), so the
+  Escalate button/action is hidden for Dean Infra in both the table row and
+  `ComplaintDetailModal` (which now takes separate `canEscalate`/`canResolve` props
+  instead of one combined `canAct`) — Dean Infra only ever sees Resolve.
+- A Department column is now shown in the table (and in the detail modal's meta grid)
+  when `effectiveRole === ROLES.DEAN_INFRA`, since their list spans departments; Lab
+  Incharge/HOD views don't render it, since they're already single-department scoped.
+- Backend: `complaint.service.js`'s `getComplaints`/`escalateComplaint`/`resolveComplaint`
+  now `.populate("department", "name")` (previously only `lab` and `history.by` were
+  populated, so `complaint.department` was a raw ObjectId) so the frontend can render the
+  department name.
 
 ## Phase 4: PC Health Card + Search — Done
 

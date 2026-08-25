@@ -272,7 +272,7 @@ test("list complaints - a labIncharge only sees complaints from their own depart
 
     assert.equal(res.status, 200)
     assert.equal(body.success, true)
-    assert.ok(body.data.every((c) => c.department === String(ownDept._id)))
+    assert.ok(body.data.every((c) => c.department?._id === String(ownDept._id)))
     assert.ok(body.data.some((c) => c._id === ownComplaint.data._id))
 })
 
@@ -298,7 +298,7 @@ test("list complaints - hod sees a complaint once it is escalated to them, acros
 
     assert.equal(res.status, 200)
     assert.ok(body.data.some((c) => c._id === created.data._id))
-    assert.ok(body.data.every((c) => c.department === String(dept._id)))
+    assert.ok(body.data.every((c) => c.department?._id === String(dept._id)))
 })
 
 test("list complaints - deanInfra does not see a complaint still at hod level", async () => {

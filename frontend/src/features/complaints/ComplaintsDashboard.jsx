@@ -10,6 +10,7 @@ import { logout } from '../../services/authService';
 import { listComplaints, escalateComplaint, resolveComplaint } from '../../services/complaintService';
 import { useAuth } from '../../hooks/useAuth';
 import { ROUTES } from '../../constants/routes';
+import { ROLES } from '../../constants/roles';
 
 function ComplaintsDashboard({ role, subtitle, defaultName }) {
   const [complaints, setComplaints] = useState([]);
@@ -48,6 +49,8 @@ function ComplaintsDashboard({ role, subtitle, defaultName }) {
   const selectedComplaint = complaints.find((c) => c._id === selectedId) || null;
 
   const canAct = (complaint) => complaint.currentLevel === effectiveRole && complaint.status !== 'Resolved';
+  const canEscalate = (complaint) => canAct(complaint) && effectiveRole !== ROLES.DEAN_INFRA;
+  const showDepartmentColumn = effectiveRole === ROLES.DEAN_INFRA;
 
   const stats = useMemo(() => {
     const total = complaints.length;
@@ -237,6 +240,7 @@ function ComplaintsDashboard({ role, subtitle, defaultName }) {
               <thead>
                 <tr>
                   <th>Description</th>
+                  {showDepartmentColumn && <th>Department</th>}
                   <th>Raised By</th>
                   <th>Date</th>
                   <th>Status</th>
@@ -246,18 +250,22 @@ function ComplaintsDashboard({ role, subtitle, defaultName }) {
               <tbody>
                 {visibleComplaints.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="panel-state-text">
+                    <td colSpan={showDepartmentColumn ? 6 : 5} className="panel-state-text">
                       {complaints.length === 0 ? 'No complaints yet.' : 'No complaints match your filters.'}
                     </td>
                   </tr>
                 ) : (
                   visibleComplaints.map((complaint) => {
                     const meta = STATUS_META[complaint.status];
-                    const actionable = canAct(complaint);
+                    const escalatable = canEscalate(complaint);
+                    const resolvable = canAct(complaint);
 
                     return (
                       <tr key={complaint._id} onClick={() => setSelectedId(complaint._id)}>
                         <td className="cell-description">{complaint.description}</td>
+                        {showDepartmentColumn && (
+                          <td className="cell-muted">{complaint.department?.name}</td>
+                        )}
                         <td className="cell-muted">{complaint.raisedBy?.name}</td>
                         <td className="cell-muted">{formatDateTime(complaint.createdAt)}</td>
                         <td>
@@ -267,28 +275,32 @@ function ComplaintsDashboard({ role, subtitle, defaultName }) {
                           </span>
                         </td>
                         <td>
-                          {actionable ? (
+                          {escalatable || resolvable ? (
                             <div className="row-actions">
-                              <button
-                                type="button"
-                                className="action-btn action-btn--escalate"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleEscalate(complaint._id);
-                                }}
-                              >
-                                Escalate
-                              </button>
-                              <button
-                                type="button"
-                                className="action-btn action-btn--resolve"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleResolveClick(complaint);
-                                }}
-                              >
-                                Resolve
-                              </button>
+                              {escalatable && (
+                                <button
+                                  type="button"
+                                  className="action-btn action-btn--escalate"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleEscalate(complaint._id);
+                                  }}
+                                >
+                                  Escalate
+                                </button>
+                              )}
+                              {resolvable && (
+                                <button
+                                  type="button"
+                                  className="action-btn action-btn--resolve"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleResolveClick(complaint);
+                                  }}
+                                >
+                                  Resolve
+                                </button>
+                              )}
                             </div>
                           ) : (
                             <span className="row-actions-none">—</span>
@@ -306,7 +318,8 @@ function ComplaintsDashboard({ role, subtitle, defaultName }) {
 
       <ComplaintDetailModal
         complaint={selectedComplaint}
-        canAct={selectedComplaint ? canAct(selectedComplaint) : false}
+        canEscalate={selectedComplaint ? canEscalate(selectedComplaint) : false}
+        canResolve={selectedComplaint ? canAct(selectedComplaint) : false}
         onClose={() => setSelectedId(null)}
         onEscalate={handleEscalate}
         onResolveClick={handleResolveClick}

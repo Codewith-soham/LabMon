@@ -1,24 +1,25 @@
-import mongoose from "mongoose"
+import mongoose from "mongoose";
 
-const labSchema = new mongoose.Schema({
+const labSchema = new mongoose.Schema(
+  {
     name: {
-        type: String,
-        required: true,
-        trim: true
+      type: String,
+      required: true,
+      trim: true,
     },
 
     department: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Dept",
-        required: true
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Dept",
+      required: true,
     },
 
     incharge: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "User",
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
     },
-},
-{ timestamps: true }
-)
+  },
+  { timestamps: true },
+);
 
-export const Lab = mongoose.model("Lab", labSchema)
+export const Lab = mongoose.model("Lab", labSchema);

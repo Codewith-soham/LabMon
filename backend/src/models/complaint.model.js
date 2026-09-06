@@ -1,80 +1,84 @@
-import mongoose from "mongoose"
-import {ROLES, COMPLAINT_STATUS} from "../config/constants.js"
+import mongoose from "mongoose";
+import { ROLES, COMPLAINT_STATUS } from "../config/constants.js";
 
-const complaintSchema = new mongoose.Schema({
+const complaintSchema = new mongoose.Schema(
+  {
     token: {
-        type: String,
-        required: true,
-        unique: true
+      type: String,
+      required: true,
+      unique: true,
     },
 
     pc: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref:"Pc",
-        required: true,
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Pc",
+      required: true,
     },
 
     department: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Dept",
-        required: true
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Dept",
+      required: true,
     },
 
     lab: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref:"Lab",
-        required: true
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Lab",
+      required: true,
     },
 
     description: {
-        type: String ,
-        required: true
+      type: String,
+      required: true,
     },
 
     raisedBy: {
-        name: {
-            type: String,
-            required: true
-        },
+      name: {
+        type: String,
+        required: true,
+      },
 
-        contact: {
-            type:String,
-            required: true
-        }
+      contact: {
+        type: String,
+        required: true,
+      },
     },
 
     status: {
-        type: String,
-        enum: Object.values(COMPLAINT_STATUS),
-        default: COMPLAINT_STATUS.OPEN,
+      type: String,
+      enum: Object.values(COMPLAINT_STATUS),
+      default: COMPLAINT_STATUS.OPEN,
     },
 
     currentLevel: {
-        type:String,
-        enum: Object.values(ROLES).filter(r => r!== ROLES.ADMIN),  //ADMIN CANNOT SE THE CURRENT LEVEL
-        default: ROLES.LAB_INCHARGE
+      type: String,
+      enum: Object.values(ROLES).filter((r) => r !== ROLES.ADMIN), //ADMIN CANNOT SE THE CURRENT LEVEL
+      default: ROLES.LAB_INCHARGE,
     },
 
-    history:[{
+    history: [
+      {
         level: {
-            type:String
+          type: String,
         },
         action: {
-            type:String
+          type: String,
         },
-        by:{
-            type:mongoose.Schema.Types.ObjectId,
-            ref:"User"
+        by: {
+          type: mongoose.Schema.Types.ObjectId,
+          ref: "User",
         },
-        at:{
-            type:Date,
-            default: Date.now
+        at: {
+          type: Date,
+          default: Date.now,
         },
         note: {
-            type: String
-        }
-    }],
-},{ timestamps: true}
-)
+          type: String,
+        },
+      },
+    ],
+  },
+  { timestamps: true },
+);
 
-export const Complaint = mongoose.model("Complaint", complaintSchema)
+export const Complaint = mongoose.model("Complaint", complaintSchema);

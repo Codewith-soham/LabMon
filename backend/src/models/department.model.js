@@ -1,21 +1,23 @@
-import mongoose from "mongoose"
+import mongoose from "mongoose";
 
-const deptSchema = new mongoose.Schema({
+const deptSchema = new mongoose.Schema(
+  {
     name: {
-        type: String,
-        required: true,
-        unique: true,
-        trim: true
+      type: String,
+      required: true,
+      unique: true,
+      trim: true,
     },
     code: {
-        type: String,
-        required: true,
-        trim: true,
-        uppercase: true
+      type: String,
+      required: true,
+      trim: true,
+      uppercase: true,
     },
-}, {
-    timestamps: true
-}
-)
+  },
+  {
+    timestamps: true,
+  },
+);
 
-export const Dept =  mongoose.model('Dept', deptSchema)
+export const Dept = mongoose.model("Dept", deptSchema);

@@ -1,68 +1,70 @@
-import mongoose from "mongoose"
+import mongoose from "mongoose";
 
-const pcSchema = new mongoose.Schema({
+const pcSchema = new mongoose.Schema(
+  {
     deadStockNo: {
-        type: String,
-        required: true,
-        unique: true
+      type: String,
+      required: true,
+      unique: true,
     },
 
     department: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Dept",
-        required: [true, "Department is required"],
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Dept",
+      required: [true, "Department is required"],
     },
 
     lab: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: "Lab",
-        required: true
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Lab",
+      required: true,
     },
 
     //embedded document
-    warranty:{
-        status: {
-            type: String,
-            enum: ["Active", "Expired"],
-            default: "Active"
-        },
+    warranty: {
+      status: {
+        type: String,
+        enum: ["Active", "Expired"],
+        default: "Active",
+      },
 
-        expiryDate: {
-            type: Date
-        }
+      expiryDate: {
+        type: Date,
+      },
     },
 
     purchaseDate: {
-        type: Date
+      type: Date,
     },
 
     config: {
-        cpu: {
-            type: String
-        },
-        ram: {
-            type: String
-        },
-        disk: {
-            type: String
-        },
-        
-        os:{
-            type: String
-        },
+      cpu: {
+        type: String,
+      },
+      ram: {
+        type: String,
+      },
+      disk: {
+        type: String,
+      },
 
-        software: {
-            type: [String]
-        },
+      os: {
+        type: String,
+      },
 
-        lastSyncedAt: {
-            type: Date
-        }
-    }
-}, {timestamps:true}
-)
+      software: {
+        type: [String],
+      },
 
-pcSchema.index({ department: 1, lab: 1 })
-pcSchema.index({ "warranty.status": 1 })
+      lastSyncedAt: {
+        type: Date,
+      },
+    },
+  },
+  { timestamps: true },
+);
 
-export const Pc = mongoose.model("Pc", pcSchema)
+pcSchema.index({ department: 1, lab: 1 });
+pcSchema.index({ "warranty.status": 1 });
+
+export const Pc = mongoose.model("Pc", pcSchema);

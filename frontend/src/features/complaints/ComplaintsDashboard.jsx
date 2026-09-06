@@ -5,7 +5,7 @@ import '../auth/AuthPage.css';
 import Donut from './Donut';
 import ComplaintDetailModal from './ComplaintDetailModal';
 import ResolveComplaintModal from './ResolveComplaintModal';
-import { STATUS_META, formatDateTime } from './complaintMeta';
+import { STATUS_META, ESCALATED_STATUSES, formatDateTime } from './complaintMeta';
 import { logout } from '../../services/authService';
 import { listComplaints, escalateComplaint, resolveComplaint } from '../../services/complaintService';
 import { useAuth } from '../../hooks/useAuth';
@@ -55,9 +55,7 @@ function ComplaintsDashboard({ role, subtitle, defaultName }) {
   const stats = useMemo(() => {
     const total = complaints.length;
     const open = complaints.filter((c) => c.status === 'Open').length;
-    const escalated = complaints.filter(
-      (c) => c.status === 'Escalated_HOD' || c.status === 'Escalated_Dean',
-    ).length;
+    const escalated = complaints.filter((c) => ESCALATED_STATUSES.includes(c.status)).length;
     const resolved = complaints.filter((c) => c.status === 'Resolved').length;
     return { total, open, escalated, resolved };
   }, [complaints]);
@@ -68,7 +66,7 @@ function ComplaintsDashboard({ role, subtitle, defaultName }) {
     if (statusFilter === 'open') {
       list = list.filter((c) => c.status === 'Open');
     } else if (statusFilter === 'escalated') {
-      list = list.filter((c) => c.status === 'Escalated_HOD' || c.status === 'Escalated_Dean');
+      list = list.filter((c) => ESCALATED_STATUSES.includes(c.status));
     } else if (statusFilter === 'resolved') {
       list = list.filter((c) => c.status === 'Resolved');
     }

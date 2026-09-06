@@ -5,6 +5,11 @@ export const STATUS_META = {
   Resolved: { label: 'Resolved', modifier: 'resolved' },
 };
 
+// Derived from STATUS_META so dashboard filtering/stats never drift from the status enum.
+export const ESCALATED_STATUSES = Object.keys(STATUS_META).filter(
+  (status) => STATUS_META[status].modifier === 'escalated',
+);
+
 export const LEVEL_LABEL = {
   labIncharge: 'Lab Incharge',
   hod: 'HOD',

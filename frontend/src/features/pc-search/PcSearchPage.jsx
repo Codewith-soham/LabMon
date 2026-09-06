@@ -266,7 +266,15 @@ function PcSearchPage() {
         </section>
       </main>
 
-      <PcHealthCardModal pc={selectedPc} onClose={() => setSelectedPc(null)} />
+      <PcHealthCardModal
+        pc={selectedPc}
+        onClose={() => setSelectedPc(null)}
+        onRefresh={(updatedPc) => {
+          if (!updatedPc) return;
+          setSelectedPc(updatedPc);
+          setResults((prev) => prev.map((pc) => (pc._id === updatedPc._id ? updatedPc : pc)));
+        }}
+      />
     </div>
   );
 }

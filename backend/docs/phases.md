@@ -5,7 +5,7 @@ the actual code and git history (`git log --oneline`), last verified 2026-08-24.
 
 ```mermaid
 flowchart LR
-    P1["1. Foundation"]:::done --> P2["2. Python Agent"]:::done --> P3["3. Health Card +\nComplaint Core"]:::done --> P4["4. Role Dashboards"]:::partial --> P5["5. Search"]:::done --> P6["6. Security\nHardening"]:::partial --> P7["7. Deployment"]:::todo
+    P1["1. Foundation"]:::done --> P2["2. Python Agent"]:::done --> P3["3. Health Card +\nComplaint Core"]:::done --> P4["4. Role Dashboards"]:::partial --> P5["5. Search"]:::done --> P6["6. Security\nHardening"]:::partial --> P7["7. Deployment"]:::partial
 
     classDef done fill:#2e7d32,color:#fff,stroke:none
     classDef todo fill:#9e9e9e,color:#fff,stroke:none
@@ -20,6 +20,7 @@ Green = done, amber = partial, grey = not started as of this snapshot.
 middleware.
 
 **Actual: done.**
+
 - MVC skeleton exists: `src/routes` → `src/controllers` → `src/services` → `src/models`.
 - All 5 models exist and are wired up: `Dept`, `Lab`, `User`, `Pc`, `Complaint` (see
   [`models.md`](./models.md)).
@@ -45,6 +46,7 @@ CPU, RAM, disk, OS, and installed software (via the Windows registry) and POSTs 
 machine.
 
 **Actual: done.**
+
 - Health card view: `GET-like` `POST /api/v1/pc/:id/health-card` (see note on HTTP verb
   in [`known-issues.md`](./known-issues.md)) returns a department-scoped PC document via
   `getPcHealthCard` in `pc.service.js`.
@@ -66,6 +68,7 @@ Everything planned for this phase is now built.
 visibility.
 
 **Actual: mostly done.**
+
 - Backend: `GET /api/v1/complaint` (role- and escalation-level-scoped list, via
   `buildComplaintScope` in `complaint.service.js`) and `GET /api/v1/pc/search` both
   exist and back real dashboard views. No dedicated aggregation/summary endpoints yet —
@@ -97,32 +100,41 @@ addition to the implicit unique index on `deadStockNo`. Wired up on the frontend
 
 **Planned:** Rate limiting, validation, audit logs, CORS and Helmet.
 
-**Actual: partially done.**
+**Actual: mostly done, one residual gap tracked separately.**
+
 - Helmet: applied (`app.use(helmet())` in `app.js`).
 - CORS: applied, configurable via `CORS_ORIGIN` env var.
 - Audit logs: the `Complaint.history[]` array is a domain-level audit trail of
   create/escalate/resolve actions — arguably satisfies this for complaints.
-- Validation: minimal — mostly relies on Mongoose schema-level `required`/`enum`/
-  `validate`. No request-body validation library (e.g. Zod/Joi) is wired in.
-- Rate limiting: **not implemented.** No rate-limit middleware anywhere, and the public,
-  auth-free endpoints (`POST /api/v1/complaint/`, `POST /api/v1/pc/sync`) are exposed to
-  it.
+- Validation: Zod schemas (`src/validators/`) plus a generic `validate(schema, target)`
+  middleware cover login/verify-email/resend-otp/pc-sync/health-card-params/complaint
+  create+escalate+resolve. `POST /register` is the one route deliberately left
+  unvalidated, tied to its still-open access-control gap — see
+  [`known-issues.md`](./known-issues.md).
+- Rate limiting: `express-rate-limit` (`src/middlewares/rateLimiter.js`) throttles
+  `POST /login`, `POST /verify-email`, `POST /resend-otp`, `POST /complaint`, and
+  `POST /pc/sync`; disabled under `NODE_ENV=test`.
+- Still open (see [`known-issues.md`](./known-issues.md)): `POST /register` access
+  control, `POST /pc/sync` device authentication, access-token revocation on logout.
 
 ## Phase 7: Deployment
 
 **Planned:** Dockerization, CI/CD, MongoDB Atlas, agent packaging, load testing.
 
-**Actual: not started.** No Dockerfile, no CI config, no packaging script for the agent
-(it's run as a plain Python script via `python agent/collector.py`).
+**Actual: partially started.** A GitHub Actions workflow
+(`.github/workflows/ci.yml`) now runs on push/PR to `main`: a `backend` job (Mongo
+service container, `npm test`) and a `frontend` job (`npm run lint` + `npm run build`).
+Still missing: Dockerfile(s), deployment automation, agent packaging (still run as a
+plain Python script via `python agent/collector.py`), and load testing.
 
 ## Summary table
 
-| Phase | Status |
-|---|---|
-| 1. Foundation | Done |
-| 2. Python Agent | Done |
-| 3. Health Card + Complaint Core | Done |
-| 4. Role Dashboards | Mostly done (Lab Incharge/HOD/Dean Infra complaint dashboards and PC search/health-card done; Equipment/Inventory/Requests pages and backend aggregation endpoints still missing) |
-| 5. Search | Done |
-| 6. Security Hardening | Partial (Helmet/CORS/audit trail done; rate limiting and request validation missing) |
-| 7. Deployment | Not started |
+| Phase                           | Status                                                                                                                                                                            |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1. Foundation                   | Done                                                                                                                                                                              |
+| 2. Python Agent                 | Done                                                                                                                                                                              |
+| 3. Health Card + Complaint Core | Done                                                                                                                                                                              |
+| 4. Role Dashboards              | Mostly done (Lab Incharge/HOD/Dean Infra complaint dashboards and PC search/health-card done; Equipment/Inventory/Requests pages and backend aggregation endpoints still missing) |
+| 5. Search                       | Done                                                                                                                                                                              |
+| 6. Security Hardening           | Partial (Helmet/CORS/audit trail/rate limiting/request validation done; `/register` access control, `/pc/sync` device auth, and access-token revocation still open)               |
+| 7. Deployment                   | Partially started (CI via GitHub Actions; no Docker, no agent packaging, no load testing)                                                                                         |

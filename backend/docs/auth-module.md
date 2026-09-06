@@ -20,13 +20,13 @@ used to sit between password check and token issuance has been removed from the 
 ## Routes (`src/routes/auth.route.js`)
 
 ```js
-router.post("/register", register)
-router.post("/verify-email", otpVerifyLimiter, validate(verifyEmailSchema), verifyEmail)
-router.post("/resend-otp", otpResendLimiter, validate(resendOtpSchema), resend)
-router.post("/login", loginLimiter, validate(loginSchema), login)
-router.post("/refresh-token", refresh)
-router.post("/logout", auth, logout)
-router.get("/me", auth, me)
+router.post("/register", register);
+router.post("/verify-email", otpVerifyLimiter, validate(verifyEmailSchema), verifyEmail);
+router.post("/resend-otp", otpResendLimiter, validate(resendOtpSchema), resend);
+router.post("/login", loginLimiter, validate(loginSchema), login);
+router.post("/refresh-token", refresh);
+router.post("/logout", auth, logout);
+router.get("/me", auth, me);
 ```
 
 All but `logout` and `me` are public (no `auth` middleware) — that's correct for
@@ -154,7 +154,7 @@ sequenceDiagram
     API-->>Client: 200, clears both cookies
 ```
 
-`/refresh-token` rotates on every redemption (issues *and stores* a brand-new refresh
+`/refresh-token` rotates on every redemption (issues _and stores_ a brand-new refresh
 token, not just a new access token) — so a leaked-but-unused old refresh token can no
 longer be replayed once the legitimate client redeems it. `/logout` requires `auth`
 (a valid access token) and clears the stored `refreshToken` hash server-side in addition
@@ -173,16 +173,17 @@ user object itself.
 
 ```js
 const cookieOptions = {
-    httpOnly: true,                                 // not readable via document.cookie
-    secure: process.env.NODE_ENV === "production",  // HTTPS-only in prod
-    sameSite: "strict"                               // not sent on cross-site requests
-}
+  httpOnly: true, // not readable via document.cookie
+  secure: process.env.NODE_ENV === "production", // HTTPS-only in prod
+  sameSite: "strict", // not sent on cross-site requests
+};
 
-const ACCESS_TOKEN_MAX_AGE = parseExpiryToMs(process.env.JWT_ACCESS_EXPIRY)
-const REFRESH_TOKEN_MAX_AGE = parseExpiryToMs(process.env.JWT_REFRESH_EXPIRY)
+const ACCESS_TOKEN_MAX_AGE = parseExpiryToMs(process.env.JWT_ACCESS_EXPIRY);
+const REFRESH_TOKEN_MAX_AGE = parseExpiryToMs(process.env.JWT_REFRESH_EXPIRY);
 
-res.cookie("accessToken", accessToken, { ...cookieOptions, maxAge: ACCESS_TOKEN_MAX_AGE })
-   .cookie("refreshToken", refreshToken, { ...cookieOptions, maxAge: REFRESH_TOKEN_MAX_AGE })
+res
+  .cookie("accessToken", accessToken, { ...cookieOptions, maxAge: ACCESS_TOKEN_MAX_AGE })
+  .cookie("refreshToken", refreshToken, { ...cookieOptions, maxAge: REFRESH_TOKEN_MAX_AGE });
 ```
 
 `maxAge` is now derived from `JWT_ACCESS_EXPIRY`/`JWT_REFRESH_EXPIRY` via
@@ -211,7 +212,7 @@ Both secrets/expiries come straight from env vars: `JWT_ACCESS_TOKEN`,
 `backend/Readme.md`).
 
 The stored refresh-token hash is not a plain `bcrypt.hash(token, 10)` — `auth.service.js`
-first SHA-256s the raw JWT to a fixed 64-char digest, then bcrypts *that*
+first SHA-256s the raw JWT to a fixed 64-char digest, then bcrypts _that_
 (`hashRefreshToken`/`compareRefreshToken`). bcrypt silently truncates input past 72
 bytes, and a refresh-token JWT routinely exceeds that, so two different tokens sharing
 a 72-byte prefix (same header + `userId` claim, differing only in `iat`/`exp` near the
@@ -235,14 +236,14 @@ the latter is not cryptographically strong, which mattered more once `/verify-em
 `issueOtp(user, purpose)` in `auth.service.js` ties these together:
 
 ```js
-const otp = generateOtp()
-user.otp = await hashOtp(otp)
-user.otpExpiry = new Date(Date.now() + OTP_EXPIRY_MS)   // OTP_EXPIRY_MINUTES * 60_000, from constants.js
-user.otpPurpose = purpose
-user.otpAttempts = 0          // reset on every fresh OTP
-user.lastOtpSentAt = new Date() // stamped for the resend cooldown
-await user.save({ validateBeforeSave: false })
-await sendOtpEmail({ to: user.email, otp, purpose })     // plaintext otp only ever leaves via email
+const otp = generateOtp();
+user.otp = await hashOtp(otp);
+user.otpExpiry = new Date(Date.now() + OTP_EXPIRY_MS); // OTP_EXPIRY_MINUTES * 60_000, from constants.js
+user.otpPurpose = purpose;
+user.otpAttempts = 0; // reset on every fresh OTP
+user.lastOtpSentAt = new Date(); // stamped for the resend cooldown
+await user.save({ validateBeforeSave: false });
+await sendOtpEmail({ to: user.email, otp, purpose }); // plaintext otp only ever leaves via email
 ```
 
 `OTP_EXPIRY_MINUTES` (10) lives in `constants.js` for the same centralization reason as
@@ -282,9 +283,9 @@ otherwise trip the cooldown.
 - Lazily builds a nodemailer transporter (`getTransporter()`), memoized in the module-
   level `transporter` variable. If `SMTP_HOST` isn't set in `.env`, it deliberately
   **doesn't** send real email — it logs `[mailer] SMTP not configured, OTP email to
-  ${to}: ${text}` to the console instead. This is what makes local dev/test usable
+${to}: ${text}` to the console instead. This is what makes local dev/test usable
   without real SMTP credentials.
-- If SMTP *is* configured, sends via `transport.sendMail(...)` using `SMTP_HOST`,
+- If SMTP _is_ configured, sends via `transport.sendMail(...)` using `SMTP_HOST`,
   `SMTP_PORT` (default 587), `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, and `MAIL_FROM`
   (default `"LABMON <no-reply@labmon.local>"`) — none of which are currently listed in
   `CLAUDE.md`'s required `.env` values, since they're optional/dev-mode-friendly.
@@ -314,13 +315,13 @@ explicitly asks for them.
 
 ```js
 userSchema.pre("save", async function () {
-    if (!this.isModified("password")) return
-    this.password = await bcrypt.hash(this.password, 10)
-})
+  if (!this.isModified("password")) return;
+  this.password = await bcrypt.hash(this.password, 10);
+});
 
 userSchema.methods.comparePassword = async function (password) {
-    return bcrypt.compare(password, this.password)
-}
+  return bcrypt.compare(password, this.password);
+};
 ```
 
 The `isModified("password")` guard means calling `.save()` for unrelated reasons (e.g.
@@ -337,7 +338,7 @@ See [`middlewares.md`](./middlewares.md#auth) for the consuming side — in shor
 ## Notable gaps in this module (see also `known-issues.md`)
 
 - **Registration is unauthenticated and unrestricted by role.** Anyone can `POST
-  /register` with `role: "admin"` — there's no `auth`/`roleCheck` on `/register` at all.
+/register` with `role: "admin"` — there's no `auth`/`roleCheck` on `/register` at all.
   Deliberately out of scope for the security-hardening pass that added rate
   limiting/validation/OTP hardening to the rest of this module.
 - **`resendOtp` still doesn't verify the caller owns the email**, only that requests are

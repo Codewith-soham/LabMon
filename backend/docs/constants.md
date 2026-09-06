@@ -1,9 +1,9 @@
 # `src/config/constants.js`
 
 Single source of truth for role names, complaint statuses, and the escalation lookup
-tables. The file's own comment states the intent: *"Centralizing roles and
+tables. The file's own comment states the intent: _"Centralizing roles and
 complaint_status so that we can change role if we want without updating in different
-files."* Nothing in the codebase should hardcode a role or status string — always import
+files."_ Nothing in the codebase should hardcode a role or status string — always import
 from here.
 
 ## Exports
@@ -12,11 +12,11 @@ from here.
 
 ```js
 export const ROLES = {
-    ADMIN: "admin",
-    LAB_INCHARGE: "labIncharge",
-    HOD: "hod",
-    DEAN_INFRA: "deanInfra"
-}
+  ADMIN: "admin",
+  LAB_INCHARGE: "labIncharge",
+  HOD: "hod",
+  DEAN_INFRA: "deanInfra",
+};
 ```
 
 The four roles in the system. `ADMIN` is a superuser role that is not part of the
@@ -25,12 +25,13 @@ excludes `ADMIN`). `LAB_INCHARGE` is the first responder for a complaint; `HOD` 
 `DEAN_INFRA` are the two escalation levels above it.
 
 Used by:
+
 - `src/models/user.model.js` — `role` field enum (`Object.values(ROLES)`).
 - `src/models/complaint.model.js` — `currentLevel` field enum
   (`Object.values(ROLES).filter(r => r !== ROLES.ADMIN)`) and the default
   (`ROLES.LAB_INCHARGE`).
 - `src/middlewares/deptScope.middleware.js` — checks `req.user.role === ROLES.ADMIN ||
-  req.user.role === ROLES.DEAN_INFRA` to decide whether to scope by department.
+req.user.role === ROLES.DEAN_INFRA` to decide whether to scope by department.
 - `src/routes/complaint.route.js` — `roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD)` and
   `roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD, ROLES.DEAN_INFRA)` gate the escalate/resolve
   routes.
@@ -41,11 +42,11 @@ Used by:
 
 ```js
 export const COMPLAINT_STATUS = {
-    OPEN: "Open",
-    ESCALATED_HOD: "Escalated_HOD",
-    ESCALATED_DEAN: "Escalated_Dean",
-    RESOLVED: "Resolved"
-}
+  OPEN: "Open",
+  ESCALATED_HOD: "Escalated_HOD",
+  ESCALATED_DEAN: "Escalated_Dean",
+  RESOLVED: "Resolved",
+};
 ```
 
 The lifecycle states of a complaint. Mirrors `currentLevel` but is a separate field
@@ -53,6 +54,7 @@ because `status` needs a distinct terminal value (`RESOLVED`) that isn't itself 
 escalation level.
 
 Used by:
+
 - `src/models/complaint.model.js` — `status` field enum, default `"Open"` (note: the
   model's default is the raw string `"Open"`, not `COMPLAINT_STATUS.OPEN` — see
   [`known-issues.md`](./known-issues.md)).
@@ -64,9 +66,9 @@ Used by:
 
 ```js
 export const NEXT_LEVEL = {
-    [ROLES.LAB_INCHARGE]: ROLES.HOD,
-    [ROLES.HOD]: ROLES.DEAN_INFRA
-}
+  [ROLES.LAB_INCHARGE]: ROLES.HOD,
+  [ROLES.HOD]: ROLES.DEAN_INFRA,
+};
 ```
 
 A lookup table encoding the escalation chain as edges: `labIncharge -> hod -> deanInfra`.
@@ -77,6 +79,7 @@ the highest escalation level"` in that case). This makes the chain's end an emer
 property of the data structure rather than a special-cased `if`.
 
 Used by:
+
 - `src/services/complaint.service.js` (`escalateComplaint`) — `NEXT_LEVEL[complaint.currentLevel]`
   determines both the new `currentLevel` and whether escalation is even possible.
 
@@ -84,17 +87,18 @@ Used by:
 
 ```js
 export const STATUS_FOR_LEVEL = {
-    [ROLES.HOD]: COMPLAINT_STATUS.ESCALATED_HOD,
-    [ROLES.DEAN_INFRA]: COMPLAINT_STATUS.ESCALATED_DEAN
-}
+  [ROLES.HOD]: COMPLAINT_STATUS.ESCALATED_HOD,
+  [ROLES.DEAN_INFRA]: COMPLAINT_STATUS.ESCALATED_DEAN,
+};
 ```
 
-Maps an escalation-chain *level* to the `status` string that should be set when a
+Maps an escalation-chain _level_ to the `status` string that should be set when a
 complaint reaches that level. There's no entry for `ROLES.LAB_INCHARGE` because a
-complaint's status is never set *to* "still with lab incharge" via escalation — that's
+complaint's status is never set _to_ "still with lab incharge" via escalation — that's
 only the creation-time default.
 
 Used by:
+
 - `src/services/complaint.service.js` (`escalateComplaint`) —
   `complaint.status = STATUS_FOR_LEVEL[nextLevel]` right after computing `nextLevel` from
   `NEXT_LEVEL`. Because `nextLevel` is always `HOD` or `DEAN_INFRA` at this point
@@ -104,11 +108,11 @@ Used by:
 
 ```js
 export const OTP_PURPOSE = {
-    EMAIL_VERIFICATION: "emailVerification"
-}
+  EMAIL_VERIFICATION: "emailVerification",
+};
 ```
 
-Distinguishes what an outstanding OTP on a `User` document is *for*. Login no longer
+Distinguishes what an outstanding OTP on a `User` document is _for_. Login no longer
 issues or checks an OTP (the login-OTP step was removed from the auth flow — login now
 just checks the password and issues JWT cookies directly), so `EMAIL_VERIFICATION` is
 currently the only purpose; the enum stays a lookup table rather than a single hardcoded
@@ -116,6 +120,7 @@ string so a future OTP-gated flow (e.g. password reset) can add a purpose withou
 touching every call site.
 
 Used by:
+
 - `src/models/user.model.js` — `otpPurpose` field enum.
 - `src/services/auth.service.js` — `issueOtp(user, purpose)` stamps this onto the user;
   `verifyEmailOtp` checks `user.otpPurpose` matches `EMAIL_VERIFICATION` before accepting
@@ -124,7 +129,7 @@ Used by:
 ### `OTP_EXPIRY_MINUTES`
 
 ```js
-export const OTP_EXPIRY_MINUTES = 10
+export const OTP_EXPIRY_MINUTES = 10;
 ```
 
 A plain number (not a role/status map). Used by `src/services/auth.service.js` to compute
@@ -134,8 +139,8 @@ A plain number (not a role/status map). Used by `src/services/auth.service.js` t
 ### `OTP_MAX_ATTEMPTS` / `OTP_RESEND_COOLDOWN_SECONDS`
 
 ```js
-export const OTP_MAX_ATTEMPTS = Number(process.env.OTP_MAX_ATTEMPTS) || 5
-export const OTP_RESEND_COOLDOWN_SECONDS = Number(process.env.OTP_RESEND_COOLDOWN_SECONDS) || 60
+export const OTP_MAX_ATTEMPTS = Number(process.env.OTP_MAX_ATTEMPTS) || 5;
+export const OTP_RESEND_COOLDOWN_SECONDS = Number(process.env.OTP_RESEND_COOLDOWN_SECONDS) || 60;
 ```
 
 Two OTP-hardening thresholds, both env-overridable with working defaults (see
@@ -147,6 +152,7 @@ roles/statuses — they're plain tunables, but centralized here for the same rea
 one place to look, one place to change.
 
 Used by:
+
 - `src/services/auth.service.js` — `verifyEmailOtp` compares `user.otpAttempts` against
   `OTP_MAX_ATTEMPTS`; `resendOtp` compares elapsed time since `user.lastOtpSentAt`
   against `OTP_RESEND_COOLDOWN_SECONDS`. Both checks are skipped when

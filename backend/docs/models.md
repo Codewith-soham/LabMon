@@ -47,8 +47,8 @@ erDiagram
 ## `Dept` — `src/models/department.model.js`
 
 ```js
-name: String, required, unique, trim
-code: String, required, trim, uppercase
+name: (String, required, unique, trim);
+code: (String, required, trim, uppercase);
 ```
 
 The top of the org hierarchy — every `Lab`, non-admin/Dean `User`, and `Pc` belongs to
@@ -65,7 +65,7 @@ incharge:   ObjectId -> User
 
 `incharge` is the `User` (expected to have `role: ROLES.LAB_INCHARGE`) responsible for
 this lab — this is who a complaint's `currentLevel` first routes to, though nothing in
-the current code actually looks up `Lab.incharge` to resolve *which specific user*
+the current code actually looks up `Lab.incharge` to resolve _which specific user_
 should act on a complaint; `escalateComplaint`/`resolveComplaint` authorize by
 `role === currentLevel` + department match, not by cross-referencing this field. Note
 `incharge` has no `required: true` — a lab can exist without an assigned incharge.

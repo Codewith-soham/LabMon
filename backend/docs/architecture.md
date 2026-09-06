@@ -43,10 +43,10 @@ Then routers are mounted, then `errorHandler` last (see [`middlewares.md`](./mid
 ## Router mounts
 
 ```js
-app.use("/api/v1/auth", authRouter)
-app.use("/api/v1/pc", pcRouter)
-app.use("/api/v1/complaint", complaintRouter)
-app.use("/api/v1/dept", deptRouter)
+app.use("/api/v1/auth", authRouter);
+app.use("/api/v1/pc", pcRouter);
+app.use("/api/v1/complaint", complaintRouter);
+app.use("/api/v1/dept", deptRouter);
 ```
 
 ## Layering convention

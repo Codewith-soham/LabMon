@@ -9,14 +9,14 @@ builds on.
 ```js
 class ApiError extends Error {
   constructor(statusCode, message = "Something went wrong", errors = [], stack = "") {
-    super(message)
-    this.statusCode = statusCode
-    this.message = message
-    this.data = null
-    this.success = false
-    this.errors = errors
-    if (stack) this.stack = stack
-    else Error.captureStackTrace(this, this.constructor)
+    super(message);
+    this.statusCode = statusCode;
+    this.message = message;
+    this.data = null;
+    this.success = false;
+    this.errors = errors;
+    if (stack) this.stack = stack;
+    else Error.captureStackTrace(this, this.constructor);
   }
 }
 ```
@@ -37,10 +37,10 @@ so error and success payloads are structurally similar — both objects, both ca
 ```js
 class ApiResponse {
   constructor(statusCode, data, message = "Success") {
-    this.statusCode = statusCode
-    this.data = data
-    this.message = message
-    this.success = statusCode < 400
+    this.statusCode = statusCode;
+    this.data = data;
+    this.message = message;
+    this.success = statusCode < 400;
   }
 }
 ```
@@ -56,9 +56,9 @@ without checking the actual HTTP status.
 ```js
 const asyncHandler = (requestHandler) => {
   return (req, res, next) => {
-    Promise.resolve(requestHandler(req, res, next)).catch((err) => next(err))
-  }
-}
+    Promise.resolve(requestHandler(req, res, next)).catch((err) => next(err));
+  };
+};
 ```
 
 Wraps every controller function (`register`, `syncPc`, `raiseComplaint`, etc.). Because
@@ -70,7 +70,7 @@ promises (from `async` functions) and synchronous return values into a promise, 
 (directly or via an `await`ed service call) ends up routed to `next(err)`, which Express
 forwards to `errorHandler`.
 
-Note: `auth.middleware.js` does *not* use this wrapper (it throws synchronously instead
+Note: `auth.middleware.js` does _not_ use this wrapper (it throws synchronously instead
 of being `async`) — see [`middlewares.md`](./middlewares.md#auth) for why that
 particular case still works despite the inconsistency.
 
@@ -128,7 +128,7 @@ keep them in sync. All three call sites now import from here instead:
   action-specific error message ("...escalate..." vs "...resolve...") so wording is
   unchanged from before the refactor.
 - `complaint.service.js`'s `getComplaints` calls `buildComplaintScope`, which layers
-  Dean Infra/HOD's escalation-*level* awareness on top of the same department rule (see
+  Dean Infra/HOD's escalation-_level_ awareness on top of the same department rule (see
   [`complaint-module.md`](./complaint-module.md#getcomplaintsuser)).
 
 Full detail on the consuming side is in
@@ -138,8 +138,8 @@ Full detail on the consuming side is in
 ## `mailer.js` — `src/utils/mailer.js`
 
 ```js
-sendOtpEmail({ to, otp, purpose })
-otpEvents   // EventEmitter, emits "otp" on every send attempt
+sendOtpEmail({ to, otp, purpose });
+otpEvents; // EventEmitter, emits "otp" on every send attempt
 ```
 
 Lazily creates a nodemailer transporter only if `SMTP_HOST` is set; otherwise logs the

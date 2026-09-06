@@ -1,6 +1,6 @@
 # Known Issues
 
-Bugs and gaps found while reading the current tree (last verified 2026-08-26), so they
+Bugs and gaps found while reading the current tree (last verified 2026-09-01), so they
 don't need to be rediscovered from scratch. Cross-referenced from the module docs where
 relevant. A number of bugs previously listed here (and in `CLAUDE.md`'s older "Known
 issues" section) have since been fixed in the code — see "Already fixed" at the bottom.
@@ -29,10 +29,47 @@ unused `deadStockNo` plus a real `department`/`lab` name. See
 A resend cooldown was added (`OTP_RESEND_COOLDOWN_SECONDS`, default 60s, tracked via
 `User.lastOtpSentAt`) so an anonymous caller can no longer trigger unlimited sends to an
 arbitrary address, and `otpResendLimiter` throttles the route further. Neither of those
-is proof of ownership, though — no OTP, password, or session is required to trigger *a*
+is proof of ownership, though — no OTP, password, or session is required to trigger _a_
 resend, just not unlimited ones. True ownership verification (e.g. a magic link) is out
 of scope for now; this residual gap is an accepted tradeoff, not an oversight. See
 [`auth-module.md`](./auth-module.md#notable-gaps-in-this-module-see-also-known-issuesmd).
+
+### Login has no per-account brute-force protection, only per-IP
+
+`loginLimiter` (`src/middlewares/rateLimiter.js`) buckets by IP (the `express-rate-limit`
+default `keyGenerator`), unlike `verify-email`'s DB-backed `otpAttempts` lockout
+(`User.otpAttempts`, `auth.service.js`). An attacker spreading password guesses across
+many IPs can brute-force one account's password with no per-account limit. No fix applied
+yet — flagged for a future pass (e.g. a lockout counter on `User` keyed by failed login
+attempts, mirroring the OTP lockout).
+
+### No `trust proxy` configuration
+
+`app.js` never calls `app.set("trust proxy", ...)`. Behind a reverse proxy/load balancer
+(the intended production path, even though deployment itself is unimplemented — see
+[`phases.md`](./phases.md#phase-7-deployment)), Express either sees every request from the
+proxy's single IP (defeating all the IP-keyed rate limiters) or, if proxy trust is set too
+permissively, an attacker can spoof `X-Forwarded-For` to get a fresh bucket per request.
+Not exploitable on localhost today; needs a decision (and a correct `trust proxy` value)
+before real deployment.
+
+### Authorization claims (`role`, `department`) are never re-verified against the DB mid-session
+
+`auth.middleware.js` sets `req.user` straight from the decoded JWT payload for the token's
+full lifetime (see [`middlewares.md`](./middlewares.md#auth-srcmiddlewaresauthmiddlewarejs)).
+This is the same root cause as the already-tracked "access tokens aren't revoked on
+logout" gap, but broader: *any* mid-session privilege change — a role/department edit, a
+future account-deactivation feature — has zero effect until the access token naturally
+expires, not just a logout. Low likelihood today since there's no admin CRUD yet to make
+such a change, but worth fixing (shorter access-token TTL, or a token-version/claims-check
+against the DB) before that lands.
+
+### `POST /refresh-token` has no rate limiter
+
+Every other public/sensitive auth route (`login`, `verify-email`, `resend-otp`) is
+rate-limited; `refresh-token` (`auth.route.js`) isn't. Low exploitability (requires an
+attacker to already possess or guess a validly-signed refresh JWT), but worth closing for
+consistency with the rest of the auth surface.
 
 ## Design inconsistencies (not bugs, but worth knowing before extending)
 
@@ -42,11 +79,14 @@ The endpoint is a pure read (`getPcHealthCard` doesn't mutate anything), but is 
 `router.post(...)`. `backend/Readme.md`'s planned surface lists it as `GET
 /api/pc/:id/health-card`. Doesn't break anything currently, but worth fixing before
 frontend/REST tooling is built expecting `GET` semantics for an idempotent read.
+The frontend now calls this route (see below), so the mismatch is no longer
+theoretical — `frontend/src/services/pcService.js`'s `getPcHealthCard` is deliberately a
+`POST` to match, with a comment noting it's intentional.
 
 ## Missing endpoints (see `phases.md` for the full roadmap gap analysis)
 
 - Admin CRUD (create/update/delete) for Dept/Lab/User/Pc — only reads exist (`GET
-  /api/v1/dept`; PC/User/Lab have no listing/CRUD routes of their own outside what
+/api/v1/dept`; PC/User/Lab have no listing/CRUD routes of their own outside what
   `pc.route.js`/`complaint.route.js` already expose).
 - Role-dashboard aggregation/summary endpoints (Phase 4) — the frontend would need to
   derive its own stats from the raw `GET /api/v1/complaint` list today.
@@ -100,7 +140,7 @@ frontend/REST tooling is built expecting `GET` semantics for an idempotent read.
   Behavior is unchanged. See [`utils.md`](./utils.md#scope-srcutilsscopejs).
 - **No rate limiting anywhere** — **fixed**: `src/middlewares/rateLimiter.js`
   (`express-rate-limit`) now throttles `POST /login`, `POST /verify-email`, `POST
-  /resend-otp`, `POST /complaint`, and `POST /pc/sync`. Disabled under `NODE_ENV=test`.
+/resend-otp`, `POST /complaint`, and `POST /pc/sync`. Disabled under `NODE_ENV=test`.
 - **No request-body validation library** — **fixed**: Zod schemas
   (`src/validators/`) plus a generic `validate(schema, target)` middleware
   (`src/middlewares/validate.middleware.js`) now validate shape/type on `POST /login`,
@@ -108,7 +148,7 @@ frontend/REST tooling is built expecting `GET` semantics for an idempotent read.
   (params), and `POST /complaint` + its escalate/resolve routes. Existing service-layer
   semantic checks (invalid OTP purpose, etc.) are intentionally left in place — schemas
   stay looser than those checks so their specific error messages still fire. `POST
-  /register` was deliberately left out of this pass. See
+/register` was deliberately left out of this pass. See
   [`middlewares.md`](./middlewares.md#validate-srcmiddlewaresvalidatemiddlewarejs).
 - **`POST /verify-email` had no guess-limit and OTPs were generated with `Math.random()`**
   — **fixed**: `otp.js` now uses `crypto.randomInt()` (a CSPRNG), and `User` gained an
@@ -120,3 +160,22 @@ frontend/REST tooling is built expecting `GET` semantics for an idempotent read.
   `roleCheck(LAB_INCHARGE, HOD, DEAN_INFRA, ADMIN)`, matching the roles actually meant to
   view health cards (a superset of `GET /pc/search`'s role list, since admin is
   deliberately excluded from search but allowed on health-card).
+- **`pcService.js`'s `getPcHealthCard` was unused dead code** — **fixed**: wired into
+  `PcHealthCardModal.jsx` as a "Refresh" action; `PcSearchPage.jsx` updates both the open
+  modal and the corresponding results-table row from the response.
+- **Redundant ObjectId validation** — `complaint.controller.js`'s `escalateComplaint`/
+  `resolveComplaint` and `pc.service.js`'s `getPcHealthCard` each re-checked
+  `mongoose.Types.ObjectId.isValid(id)` even though the route already runs
+  `validate(objectIdParamSchema, "params")` first — **fixed**: removed the redundant
+  in-handler checks (and the now-unused `mongoose` import from
+  `complaint.controller.js`); the validator middleware is the single source of truth for
+  that check.
+- **`app.js` imported its own routes via `"../src/routes/..."`** despite `app.js` living
+  in `backend/src/` itself (worked only because the relative path doubled back up and
+  into `src` again) — **fixed**: now `"./routes/..."`.
+- **Inconsistent formatting across the codebase** (mixed 2-space/4-space indent,
+  inconsistent spacing around commas/keywords) despite a `.prettierrc` already existing —
+  **fixed**: ran `npx prettier --write .` to normalize the whole `backend/` tree.
+- **No CI configured** — **fixed**: `.github/workflows/ci.yml` runs on push/PR to
+  `main` — a `backend` job (Mongo service container, `npm test`) and a `frontend` job
+  (`npm run lint`, `npm run build`).

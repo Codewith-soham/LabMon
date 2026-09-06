@@ -24,21 +24,21 @@ flowchart LR
 
 ```js
 const auth = (req, res, next) => {
-    const authHeader = req.headers.authorization
-    const headerToken = authHeader?.startsWith("Bearer") ? authHeader.split(" ")[1] : null
-    const token = headerToken || req.cookies?.accessToken
+  const authHeader = req.headers.authorization;
+  const headerToken = authHeader?.startsWith("Bearer") ? authHeader.split(" ")[1] : null;
+  const token = headerToken || req.cookies?.accessToken;
 
-    if (!token) {
-        throw new ApiError(401, "Authentication required")
-    }
-    try {
-        const decoded = jwt.verify(token, process.env.JWT_ACCESS_TOKEN)
-        req.user = decoded
-        next()
-    } catch (error) {
-        throw new ApiError(401, "Invalid or expired token")
-    }
-}
+  if (!token) {
+    throw new ApiError(401, "Authentication required");
+  }
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_ACCESS_TOKEN);
+    req.user = decoded;
+    next();
+  } catch (error) {
+    throw new ApiError(401, "Invalid or expired token");
+  }
+};
 ```
 
 - Reads `Authorization: Bearer <token>` first; if that header is missing or not a
@@ -56,7 +56,7 @@ const auth = (req, res, next) => {
   changes in the DB after a token was issued, `req.user` still reflects the old values
   until the token expires and they log in again.
 - Any verification failure (expired, malformed, wrong signature) → `401 "Invalid or
-  expired token"`.
+expired token"`.
 - Note: `auth` throws synchronously (not via `asyncHandler`), which works here because
   Express 5's default routing catches synchronous throws in middleware — but it's
   inconsistent with the rest of the codebase's `asyncHandler` convention. It happens to
@@ -66,13 +66,13 @@ const auth = (req, res, next) => {
 
 ```js
 const roleCheck = (...allowedRoles) => {
-    return (req, res, next) => {
-        if (!allowedRoles.includes(req.user.role)) {
-            throw new ApiError(403, "You do not have permission to perform this action")
-        }
-        next()
+  return (req, res, next) => {
+    if (!allowedRoles.includes(req.user.role)) {
+      throw new ApiError(403, "You do not have permission to perform this action");
     }
-}
+    next();
+  };
+};
 ```
 
 - A middleware **factory** — called with a list of allowed role strings at route-
@@ -85,7 +85,7 @@ const roleCheck = (...allowedRoles) => {
   itself).
 - Used in `src/routes/complaint.route.js`:
   - `escalate`: `roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD)` — Dean Infra is excluded
-    because there is no level above Dean Infra to escalate *to*.
+    because there is no level above Dean Infra to escalate _to_.
   - `resolve`: `roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD, ROLES.DEAN_INFRA)` — any level
     in the chain can resolve.
 - Not currently used on any PC route — `pc.route.js` relies on `deptScope` alone for the
@@ -95,9 +95,9 @@ const roleCheck = (...allowedRoles) => {
 
 ```js
 const deptScope = (req, res, next) => {
-    req.scope = buildDepartmentScope(req.user)
-    next()
-}
+  req.scope = buildDepartmentScope(req.user);
+  next();
+};
 ```
 
 - Also requires `req.user` from `auth` to already be set.
@@ -108,10 +108,10 @@ const deptScope = (req, res, next) => {
     roles operate across all departments (`department: null` on their `User` docs
     confirms this — see `models.md`).
   - Everyone else (`labIncharge`, `hod`) gets `req.scope = { department:
-    req.user.department }` — restricts to their own department only.
+req.user.department }` — restricts to their own department only.
 - Consumed today by exactly one route: `pc.route.js`'s `POST /:id/health-card`, where
   `pc.service.js`'s `getPcHealthCard(pcId, scope)` does `Pc.findOne({ _id: pcId,
-  ...scope })`. Spreading `{}` is a no-op filter (matches any department); spreading
+...scope })`. Spreading `{}` is a no-op filter (matches any department); spreading
   `{ department: X }` narrows the match. If a non-admin/non-Dean user requests a PC in
   another department, the `_id` matches but `department` doesn't, so `findOne` returns
   `null` and the service throws `404 "Pc not found"` — **not** a `403`. This is a
@@ -121,7 +121,7 @@ const deptScope = (req, res, next) => {
 - **Not** used on the complaint `list`/`escalate`/`resolve` routes. `list` computes its
   own role/level-aware scope inside `complaint.service.js` via `buildComplaintScope`
   (department scoping alone isn't expressive enough there — HOD/Dean Infra additionally
-  need to see only complaints currently at *their* level); `escalate`/`resolve` call
+  need to see only complaints currently at _their_ level); `escalate`/`resolve` call
   `assertDepartmentAccess`. All three (`deptScope`, `buildComplaintScope`,
   `assertDepartmentAccess`) now live in the same module, `src/utils/scope.js` — the same
   "admin/Dean-Infra are unscoped, everyone else is department-locked" rule used to be
@@ -134,28 +134,28 @@ const deptScope = (req, res, next) => {
 
 ```js
 const makeLimiter = ({ windowMs, max, message }) =>
-    rateLimit({
-        windowMs,
-        max,
-        standardHeaders: true,
-        legacyHeaders: false,
-        skip: () => process.env.NODE_ENV === "test",
-        handler: (req, res) => {
-            res.status(429).json({ success: false, statusCode: 429, message, errors: [] })
-        }
-    })
+  rateLimit({
+    windowMs,
+    max,
+    standardHeaders: true,
+    legacyHeaders: false,
+    skip: () => process.env.NODE_ENV === "test",
+    handler: (req, res) => {
+      res.status(429).json({ success: false, statusCode: 429, message, errors: [] });
+    },
+  });
 ```
 
 Five named limiter instances built from this factory, one per throttled route, each
 independently configurable via env vars (see `backend/Readme.md`):
 
-| Export | Route | Default | Rationale |
-|---|---|---|---|
-| `loginLimiter` | `POST /auth/login` | 10 / 15 min | password-guessing surface |
-| `otpVerifyLimiter` | `POST /auth/verify-email` | 10 / 15 min | OTP-guessing surface |
-| `otpResendLimiter` | `POST /auth/resend-otp` | 5 / 15 min | inbox-spam vector |
-| `complaintLimiter` | `POST /complaint` | 20 / hour | public-form flood protection |
-| `pcSyncLimiter` | `POST /pc/sync` | 30 / min | basic abuse throttle (no device auth yet — see [`known-issues.md`](./known-issues.md)) |
+| Export             | Route                     | Default     | Rationale                                                                              |
+| ------------------ | ------------------------- | ----------- | -------------------------------------------------------------------------------------- |
+| `loginLimiter`     | `POST /auth/login`        | 10 / 15 min | password-guessing surface                                                              |
+| `otpVerifyLimiter` | `POST /auth/verify-email` | 10 / 15 min | OTP-guessing surface                                                                   |
+| `otpResendLimiter` | `POST /auth/resend-otp`   | 5 / 15 min  | inbox-spam vector                                                                      |
+| `complaintLimiter` | `POST /complaint`         | 20 / hour   | public-form flood protection                                                           |
+| `pcSyncLimiter`    | `POST /pc/sync`           | 30 / min    | basic abuse throttle (no device auth yet — see [`known-issues.md`](./known-issues.md)) |
 
 - Built on `express-rate-limit`. `skip: () => NODE_ENV === "test"` disables every
   limiter during the automated test suite (each `src/tests/*.test.js` file sets
@@ -171,18 +171,20 @@ independently configurable via env vars (see `backend/Readme.md`):
 ## `validate` — `src/middlewares/validate.middleware.js`
 
 ```js
-const validate = (schema, target = "body") => (req, res, next) => {
-    const result = schema.safeParse(req[target])
+const validate =
+  (schema, target = "body") =>
+  (req, res, next) => {
+    const result = schema.safeParse(req[target]);
     if (!result.success) {
-        const errors = result.error.issues.map((issue) => ({
-            field: issue.path.join("."),
-            message: issue.message
-        }))
-        throw new ApiError(400, "Validation failed", errors)
+      const errors = result.error.issues.map((issue) => ({
+        field: issue.path.join("."),
+        message: issue.message,
+      }));
+      throw new ApiError(400, "Validation failed", errors);
     }
-    req[target] = result.data
-    next()
-}
+    req[target] = result.data;
+    next();
+  };
 ```
 
 A middleware **factory** (like `roleCheck`) parameterized by a Zod schema and which part
@@ -210,22 +212,22 @@ Wired in ahead of the controller on: `POST /auth/login`, `POST /auth/verify-emai
 
 ```js
 const errorHandler = (err, req, res, next) => {
-    if (err instanceof ApiError) {
-        return res.status(err.statusCode).json({
-            success: false,
-            statusCode: err.statusCode,
-            message: err.message,
-            errors: err.errors
-        })
-    }
-    console.error(err)
-    return res.status(500).json({
-        success: false,
-        statusCode: 500,
-        message: "Internal Server Error",
-        errors: []
-    })
-}
+  if (err instanceof ApiError) {
+    return res.status(err.statusCode).json({
+      success: false,
+      statusCode: err.statusCode,
+      message: err.message,
+      errors: err.errors,
+    });
+  }
+  console.error(err);
+  return res.status(500).json({
+    success: false,
+    statusCode: 500,
+    message: "Internal Server Error",
+    errors: [],
+  });
+};
 ```
 
 - Express error-handling middleware (4-arg signature — the arity is what tells Express
@@ -248,15 +250,15 @@ const errorHandler = (err, req, res, next) => {
 `pc.route.js`:
 
 ```js
-router.post("/sync", pcSyncLimiter, validate(syncPcSchema), syncPc)
+router.post("/sync", pcSyncLimiter, validate(syncPcSchema), syncPc);
 router.post(
-    "/:id/health-card",
-    auth,
-    roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD, ROLES.DEAN_INFRA, ROLES.ADMIN),
-    validate(objectIdParamSchema, "params"),
-    deptScope,
-    PcHealthCard
-)
+  "/:id/health-card",
+  auth,
+  roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD, ROLES.DEAN_INFRA, ROLES.ADMIN),
+  validate(objectIdParamSchema, "params"),
+  deptScope,
+  PcHealthCard,
+);
 ```
 
 Order matters: for `/sync`, throttling happens before validation, before the (still
@@ -269,10 +271,23 @@ checks `:id` is a well-formed ObjectId; `deptScope` reads `req.user.role`/
 `complaint.route.js`:
 
 ```js
-router.post("/", complaintLimiter, validate(raiseComplaintSchema), raiseComplaint)
-router.patch("/:id/escalate", auth, roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD), validate(objectIdParamSchema, "params"), escalateComplaint)
-router.patch("/:id/resolve", auth, roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD, ROLES.DEAN_INFRA), validate(objectIdParamSchema, "params"), validate(resolveComplaintSchema), resolveComplaint)
-router.get("/", auth, list)
+router.post("/", complaintLimiter, validate(raiseComplaintSchema), raiseComplaint);
+router.patch(
+  "/:id/escalate",
+  auth,
+  roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD),
+  validate(objectIdParamSchema, "params"),
+  escalateComplaint,
+);
+router.patch(
+  "/:id/resolve",
+  auth,
+  roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD, ROLES.DEAN_INFRA),
+  validate(objectIdParamSchema, "params"),
+  validate(resolveComplaintSchema),
+  resolveComplaint,
+);
+router.get("/", auth, list);
 ```
 
 None of the complaint routes use `deptScope` — `escalate`/`resolve` use `roleCheck` for

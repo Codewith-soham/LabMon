@@ -67,16 +67,16 @@ not a copy of it, since `healthcard.test.js` expects admin to succeed here. See
 
 **Query params** (all optional; an empty query returns every PC in scope, sorted newest-first by `createdAt`):
 
-| Param | Match type | Field | Notes |
-|---|---|---|---|
-| `deadStockNo` | partial, case-insensitive | `deadStockNo` | regex-escaped |
-| `cpu` | partial, case-insensitive | `config.cpu` | regex-escaped |
-| `ram` | partial, case-insensitive | `config.ram` | regex-escaped |
-| `disk` | partial, case-insensitive | `config.disk` | regex-escaped |
-| `os` | partial, case-insensitive | `config.os` | regex-escaped |
-| `software` | partial, case-insensitive | `config.software` | matches if any array element contains the substring |
-| `warrantyStatus` | exact | `warranty.status` | must be `Active` or `Expired`, else `400` |
-| `lab` | exact | `lab` | must be a valid Mongo ObjectId, else `400` |
+| Param            | Match type                | Field             | Notes                                               |
+| ---------------- | ------------------------- | ----------------- | --------------------------------------------------- |
+| `deadStockNo`    | partial, case-insensitive | `deadStockNo`     | regex-escaped                                       |
+| `cpu`            | partial, case-insensitive | `config.cpu`      | regex-escaped                                       |
+| `ram`            | partial, case-insensitive | `config.ram`      | regex-escaped                                       |
+| `disk`           | partial, case-insensitive | `config.disk`     | regex-escaped                                       |
+| `os`             | partial, case-insensitive | `config.os`       | regex-escaped                                       |
+| `software`       | partial, case-insensitive | `config.software` | matches if any array element contains the substring |
+| `warrantyStatus` | exact                     | `warranty.status` | must be `Active` or `Expired`, else `400`           |
+| `lab`            | exact                     | `lab`             | must be a valid Mongo ObjectId, else `400`          |
 
 There is intentionally no `department` override param - scope always comes from `req.scope`, so a labIncharge/hod can't widen their results by passing a different department.
 
@@ -85,10 +85,12 @@ There is intentionally no `department` override param - scope always comes from 
 **Indexes** added to support this: `{ department: 1, lab: 1 }` and `{ "warranty.status": 1 }` on `pc.model.js`. Substring regex on `config.cpu`/`os`/`software` isn't accelerated by these (B-tree indexes don't help unanchored regex) - a future `$text`/Atlas Search index would be needed for that.
 
 **Example**:
+
 ```
 GET /api/v1/pc/search?cpu=i5&warrantyStatus=Active
 Authorization: Bearer <accessToken>
 ```
+
 Returns PCs (within the caller's scope) whose `config.cpu` contains "i5" (case-insensitive) and whose `warranty.status` is exactly `"Active"`.
 
 **Tests**: `src/tests/pc.search.test.js` - end-to-end integration tests covering auth/role/department scoping, each filter type, input validation (`400`s), and regex-escaping.

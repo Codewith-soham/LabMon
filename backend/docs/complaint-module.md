@@ -39,9 +39,22 @@ Files involved:
 ## Routes (`src/routes/complaint.route.js`)
 
 ```js
-router.post("/", complaintLimiter, validate(raiseComplaintSchema), raiseComplaint)      // public
-router.patch("/:id/escalate", auth, roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD), validate(objectIdParamSchema, "params"), escalateComplaint)
-router.patch("/:id/resolve",  auth, roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD, ROLES.DEAN_INFRA), validate(objectIdParamSchema, "params"), validate(resolveComplaintSchema), resolveComplaint)
+router.post("/", complaintLimiter, validate(raiseComplaintSchema), raiseComplaint); // public
+router.patch(
+  "/:id/escalate",
+  auth,
+  roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD),
+  validate(objectIdParamSchema, "params"),
+  escalateComplaint,
+);
+router.patch(
+  "/:id/resolve",
+  auth,
+  roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD, ROLES.DEAN_INFRA),
+  validate(objectIdParamSchema, "params"),
+  validate(resolveComplaintSchema),
+  resolveComplaint,
+);
 ```
 
 Mounted (via `app.js`) at `/api/v1/complaint`.
@@ -61,13 +74,13 @@ Also registered but omitted from the snippet above: `router.get("/track/:token",
   per the product goal of "public, login-free complaint submission tracked by a unique
   token."
 - `escalate`/`resolve` both require `auth` + `roleCheck`. `roleCheck` only checks the
-  *role* is one of the allowed set — the actual "is this the right person for *this*
+  _role_ is one of the allowed set — the actual "is this the right person for _this_
   complaint" check (current level match, department match) happens inside the service
   (see below), not in middleware.
 - `list` requires only `auth` — it does **not** go through the `deptScope` middleware.
   Scoping is computed entirely inside `getComplaints(user)` via `buildComplaintScope`
   (see below), because plain department-scoping isn't expressive enough here: HOD and
-  Dean Infra additionally need to see only complaints currently sitting *at their level*,
+  Dean Infra additionally need to see only complaints currently sitting _at their level_,
   not their department's/everyone's full history. `deptScope` remains in use only on the
   PC health-card route — see [`middlewares.md`](./middlewares.md#deptscope).
 
@@ -75,25 +88,25 @@ Also registered but omitted from the snippet above: `router.get("/track/:token",
 
 ```js
 const raiseComplaint = asyncHandler(async (req, res) => {
-    const complaint = await createComplaint(req.body)
-    return res.status(201).json(new ApiResponse(201, complaint, "Complaint raised successfully"))
-})
+  const complaint = await createComplaint(req.body);
+  return res.status(201).json(new ApiResponse(201, complaint, "Complaint raised successfully"));
+});
 
 const escalateComplaint = asyncHandler(async (req, res) => {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-        throw new ApiError(400, "Invalid complaint id")
-    }
-    const complaint = await escalateComplaintService(req.params.id, req.user)
-    return res.status(200).json(new ApiResponse(200, complaint, "Complaint escalated successfully"))
-})
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApiError(400, "Invalid complaint id");
+  }
+  const complaint = await escalateComplaintService(req.params.id, req.user);
+  return res.status(200).json(new ApiResponse(200, complaint, "Complaint escalated successfully"));
+});
 
 const resolveComplaint = asyncHandler(async (req, res) => {
-    if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
-        throw new ApiError(400, "Invalid complaint id")
-    }
-    const complaint = await resolveComplaintService(req.params.id, req.user, req.body.remarks)
-    return res.status(200).json(new ApiResponse(200, complaint, "Complaint resolved successfully"))
-})
+  if (!mongoose.Types.ObjectId.isValid(req.params.id)) {
+    throw new ApiError(400, "Invalid complaint id");
+  }
+  const complaint = await resolveComplaintService(req.params.id, req.user, req.body.remarks);
+  return res.status(200).json(new ApiResponse(200, complaint, "Complaint resolved successfully"));
+});
 ```
 
 Both `escalateComplaint` and `resolveComplaint` validate `req.params.id` is a well-formed
@@ -114,22 +127,22 @@ aliasing rather than renaming one side.
 ### `createComplaint({ deadStockNo, description, raisedBy })`
 
 ```js
-const pc = await Pc.findOne({ deadStockNo })
-if (!pc) throw new ApiError(404, "PC not found")
+const pc = await Pc.findOne({ deadStockNo });
+if (!pc) throw new ApiError(404, "PC not found");
 
-const complaintToken = nanoid(8)
+const complaintToken = nanoid(8);
 
 const complaint = await Complaint.create({
-    token: complaintToken,
-    pc: pc._id,
-    department: pc.department,
-    lab: pc.lab,
-    description,
-    raisedBy,
-    status: COMPLAINT_STATUS.OPEN,
-    currentLevel: ROLES.LAB_INCHARGE,
-    history: [{ level: ROLES.LAB_INCHARGE, action: "created", by: null, at: new Date() }]
-})
+  token: complaintToken,
+  pc: pc._id,
+  department: pc.department,
+  lab: pc.lab,
+  description,
+  raisedBy,
+  status: COMPLAINT_STATUS.OPEN,
+  currentLevel: ROLES.LAB_INCHARGE,
+  history: [{ level: ROLES.LAB_INCHARGE, action: "created", by: null, at: new Date() }],
+});
 ```
 
 - The caller supplies a **`deadStockNo`**, not a `pc` ObjectId or a `department`/`lab` —
@@ -171,21 +184,30 @@ flowchart TD
 ```js
 // assertDepartmentAccess now lives in src/utils/scope.js, shared with deptScope
 // middleware and buildComplaintScope below — see utils.md#scope-srcutilsscopejs
-const complaint = await Complaint.findById(complaintId)
-if (!complaint) throw new ApiError(404, "Complaint not found")
-if (complaint.status === COMPLAINT_STATUS.RESOLVED) throw new ApiError(400, "Cannot escalate a resolved complaint")
-assertDepartmentAccess(user, complaint.department, "You are not authorized to escalate complaints outside your department")
+const complaint = await Complaint.findById(complaintId);
+if (!complaint) throw new ApiError(404, "Complaint not found");
+if (complaint.status === COMPLAINT_STATUS.RESOLVED)
+  throw new ApiError(400, "Cannot escalate a resolved complaint");
+assertDepartmentAccess(
+  user,
+  complaint.department,
+  "You are not authorized to escalate complaints outside your department",
+);
 if (user.role !== complaint.currentLevel) {
-    throw new ApiError(403, "Only the current level's incharge can escalate this complaint")
+  throw new ApiError(403, "Only the current level's incharge can escalate this complaint");
 }
-const nextLevel = NEXT_LEVEL[complaint.currentLevel]
-if (!nextLevel) throw new ApiError(400, "Complaint is already at the highest escalation level")
+const nextLevel = NEXT_LEVEL[complaint.currentLevel];
+if (!nextLevel) throw new ApiError(400, "Complaint is already at the highest escalation level");
 
-complaint.currentLevel = nextLevel
-complaint.status = STATUS_FOR_LEVEL[nextLevel]
-complaint.history.push({ level: nextLevel, action: "escalated", by: user.id, at: new Date() })
-await complaint.save()
-await complaint.populate([{ path: "lab", select: "name" }, { path: "department", select: "name" }, { path: "history.by", select: "name" }])
+complaint.currentLevel = nextLevel;
+complaint.status = STATUS_FOR_LEVEL[nextLevel];
+complaint.history.push({ level: nextLevel, action: "escalated", by: user.id, at: new Date() });
+await complaint.save();
+await complaint.populate([
+  { path: "lab", select: "name" },
+  { path: "department", select: "name" },
+  { path: "history.by", select: "name" },
+]);
 ```
 
 Five checks, in order, each a distinct failure mode:
@@ -205,7 +227,7 @@ Five checks, in order, each a distinct failure mode:
    matching `deptScope` middleware's treatment of those two roles as unscoped (see
    [`middlewares.md`](./middlewares.md#deptscope)).
 4. **Current-level match** (`403`) — this is the actual authorization core of the
-   escalation chain: only the *specific* role holding a complaint right now
+   escalation chain: only the _specific_ role holding a complaint right now
    (`complaint.currentLevel`) can move it forward, not just "any Lab Incharge or HOD
    anywhere." E.g. an HOD cannot escalate a complaint that's still sitting with Lab
    Incharge — only the Lab Incharge (of the right department, per check 3) can do that
@@ -220,27 +242,42 @@ Then: mutate `currentLevel` and `status` together (from the two lookup tables), 
 ### `resolveComplaint(complaintId, user, remarks)`
 
 ```js
-const complaint = await Complaint.findById(complaintId)
-if (!complaint) throw new ApiError(404, "Complaint not found")
-if (complaint.status === COMPLAINT_STATUS.RESOLVED) throw new ApiError(400, "Complaint is already resolved")
-assertDepartmentAccess(user, complaint.department, "You are not authorized to resolve complaints outside your department")
+const complaint = await Complaint.findById(complaintId);
+if (!complaint) throw new ApiError(404, "Complaint not found");
+if (complaint.status === COMPLAINT_STATUS.RESOLVED)
+  throw new ApiError(400, "Complaint is already resolved");
+assertDepartmentAccess(
+  user,
+  complaint.department,
+  "You are not authorized to resolve complaints outside your department",
+);
 if (user.role !== complaint.currentLevel) {
-    throw new ApiError(403, "Only the current level's incharge can resolve this complaint")
+  throw new ApiError(403, "Only the current level's incharge can resolve this complaint");
 }
-complaint.status = COMPLAINT_STATUS.RESOLVED
-complaint.history.push({ level: complaint.currentLevel, action: "resolved", by: user.id, at: new Date(), note: remarks })
-await complaint.save()
-await complaint.populate([{ path: "lab", select: "name" }, { path: "department", select: "name" }, { path: "history.by", select: "name" }])
+complaint.status = COMPLAINT_STATUS.RESOLVED;
+complaint.history.push({
+  level: complaint.currentLevel,
+  action: "resolved",
+  by: user.id,
+  at: new Date(),
+  note: remarks,
+});
+await complaint.save();
+await complaint.populate([
+  { path: "lab", select: "name" },
+  { path: "department", select: "name" },
+  { path: "history.by", select: "name" },
+]);
 ```
 
 Same four checks as escalation (existence, terminal state, department scope,
 current-level match) minus the "top of chain" check, since resolving doesn't move
 `currentLevel` at all — `currentLevel` freezes at whatever level resolved it (useful for
-knowing *who* closed it later, from `history` too). `remarks` (from `req.body.remarks`
+knowing _who_ closed it later, from `history` too). `remarks` (from `req.body.remarks`
 in the controller) is optional — the schema's `history[].note` field has no `required`
 constraint — and is stored as the `note` on the "resolved" history entry.
 
-**Escalate and resolve share the same current-level-match rule** — this means at *any*
+**Escalate and resolve share the same current-level-match rule** — this means at _any_
 given level in the chain, the incharge holding the complaint can choose to either push it
 up (`escalate`) or close it out (`resolve`) themselves; there's no separate "only the top
 level can mark resolved" rule. That matches the product framing ("escalating through a
@@ -249,9 +286,10 @@ fixed chain") where resolution can happen at any point in the chain, not just at
 ### `trackComplaint(token)`
 
 ```js
-const complaint = await Complaint.findOne({ token })
-    .select("token status currentLevel description createdAt")
-if (!complaint) throw new ApiError(404, "Invalid tracking token")
+const complaint = await Complaint.findOne({ token }).select(
+  "token status currentLevel description createdAt",
+);
+if (!complaint) throw new ApiError(404, "Invalid tracking token");
 ```
 
 Public lookup, deliberately projected down to a small field set — no `department`/`lab`/
@@ -266,23 +304,23 @@ Public lookup, deliberately projected down to a small field set — no `departme
 // hod/deanInfra only see complaints currently escalated to their level (department-
 // scoped for hod, across all departments for deanInfra)
 const buildComplaintScope = (user) => {
-    if (user.role === ROLES.ADMIN) return {}
-    if (user.role === ROLES.DEAN_INFRA) return { currentLevel: ROLES.DEAN_INFRA }
-    if (user.role === ROLES.HOD) return { department: user.department, currentLevel: ROLES.HOD }
-    return { department: user.department }
-}
+  if (user.role === ROLES.ADMIN) return {};
+  if (user.role === ROLES.DEAN_INFRA) return { currentLevel: ROLES.DEAN_INFRA };
+  if (user.role === ROLES.HOD) return { department: user.department, currentLevel: ROLES.HOD };
+  return { department: user.department };
+};
 
 const getComplaints = async (user) => {
-    const scope = buildComplaintScope(user)
-    return Complaint.find(scope)
-        .sort({ createdAt: -1 })
-        .populate("lab", "name")
-        .populate("department", "name")
-        .populate("history.by", "name")
-}
+  const scope = buildComplaintScope(user);
+  return Complaint.find(scope)
+    .sort({ createdAt: -1 })
+    .populate("lab", "name")
+    .populate("department", "name")
+    .populate("history.by", "name");
+};
 ```
 
-Scoping is computed from the *authenticated user's role*, not a shared `deptScope`
+Scoping is computed from the _authenticated user's role_, not a shared `deptScope`
 middleware — a plain department filter isn't enough here, because HOD and Dean Infra
 should only see complaints currently sitting **at their level**, not every complaint
 ever raised in their department/system. Concretely:
@@ -327,9 +365,9 @@ history: [{
 ```
 
 `currentLevel`'s enum is built as `Object.values(ROLES).filter(r => r !== ROLES.ADMIN)` —
-excluding `ADMIN` from the *set of values this field can hold* is correct (a complaint
+excluding `ADMIN` from the _set of values this field can hold_ is correct (a complaint
 is never "held by" the admin role as a chain position), even though `ADMIN` users are
-still allowed to *act on* complaints at any level via the `user.role !== ROLES.ADMIN`
+still allowed to _act on_ complaints at any level via the `user.role !== ROLES.ADMIN`
 bypass checks in the service layer above. Those are two different things: what
 `currentLevel` can be set to, vs. who is authorized to change it.
 

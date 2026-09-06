@@ -11,6 +11,7 @@ yarn-error.log*
 pnpm-debug.log*
 .npm/
 .eslintcache
+.oxlintcache
 coverage/
 dist/
 dist-ssr/
@@ -18,14 +19,22 @@ build/
 *.local
 *.tsbuildinfo
 
+# --- Vite (frontend) ---
+.vite/
+vite.config.js.timestamp-*
+vite.config.*.timestamp-*
+
 # --- Python (agent) ---
 venv/
 .venv/
+env/
 __pycache__/
 *.pyc
 *.pyo
 *.egg-info/
 .pytest_cache/
+.Python
+pip-log.txt
 
 # --- Logs ---
 logs/
@@ -39,6 +48,14 @@ Thumbs.db
 .idea/
 .vscode/*
 !.vscode/extensions.json
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# --- Claude Code (local, per-developer) ---
+.claude/settings.local.json
 
 # --- Misc ---
 *.pid

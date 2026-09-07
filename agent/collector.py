@@ -1,9 +1,16 @@
 """LABMON agent: collects this PC's hardware/software config and syncs it
 to the backend health card for the given dead stock number.
+
+The installed-software list is filtered to an allowlist (default: Microsoft
+Office / productivity apps). Override per machine with the
+LABMON_SOFTWARE_ALLOWLIST env var, or set it to "all" to report everything.
 """
 
+import argparse
+import json
 import os
 import platform
+import re
 import sys
 from datetime import datetime, timezone
 
@@ -23,6 +30,80 @@ UNINSTALL_KEYS = [
     (winreg.HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall") if winreg else None,
     (winreg.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall") if winreg else None,
 ]
+
+# Only software whose registry DisplayName contains one of these (case-insensitive)
+# substrings is reported. Default targets Microsoft Office / productivity apps. Override
+# per machine with LABMON_SOFTWARE_ALLOWLIST (comma-separated substrings); set it to
+# "all" or "*" to report every installed program.
+DEFAULT_SOFTWARE_ALLOWLIST = (
+    "microsoft office", "microsoft 365", "office 16 click-to-run",
+    "microsoft word", "microsoft excel", "microsoft powerpoint",
+    "microsoft outlook", "microsoft onenote", "microsoft access",
+    "microsoft publisher", "microsoft visio", "microsoft project",
+    "microsoft teams",
+)
+
+
+def _software_allowlist():
+    raw = os.environ.get("LABMON_SOFTWARE_ALLOWLIST", "").strip()
+    if not raw:
+        return DEFAULT_SOFTWARE_ALLOWLIST
+    if raw.lower() in ("all", "*"):
+        return None  # sentinel: no filtering
+    return tuple(p.strip().lower() for p in raw.split(",") if p.strip())
+
+
+def _name_matches(name, allowlist):
+    lowered = name.lower()
+    return any(term in lowered for term in allowlist)
+
+
+# Registry DisplayNames for helper packages that ship alongside real apps but
+# aren't user-facing applications — dropped from the reported list.
+SOFTWARE_NOISE = (
+    "click-to-run extensibility",
+    "meeting add-in",
+    "add-in for microsoft office",
+    "redistributable",
+    "runtime library",
+    "web experience pack",
+)
+
+# Trailing locale/edition tag, e.g. "Microsoft OneNote - en-us" -> "Microsoft OneNote".
+_LOCALE_SUFFIX_RE = re.compile(r"\s*-\s*[a-z]{2}-[a-z]{2}\s*$", re.IGNORECASE)
+
+# Product names whose correct casing a naive title-case would mangle
+# ("Onenote", "Powerpoint"). Applied word-by-word after title-casing.
+CANONICAL_CASING = {
+    "onenote": "OneNote",
+    "powerpoint": "PowerPoint",
+    "sharepoint": "SharePoint",
+    "onedrive": "OneDrive",
+}
+
+
+def _is_software_noise(name):
+    lowered = name.lower()
+    return any(term in lowered for term in SOFTWARE_NOISE)
+
+
+def _clean_software_name(name):
+    """Normalises a raw registry DisplayName into a clean, consistently-cased
+    product name: strips the locale suffix, collapses whitespace, and title-cases
+    while preserving acronyms and known product spellings."""
+    name = _LOCALE_SUFFIX_RE.sub("", name).strip()
+    name = re.sub(r"\s{2,}", " ", name)
+
+    words = []
+    for word in name.split(" "):
+        lowered = word.lower()
+        if lowered in CANONICAL_CASING:
+            words.append(CANONICAL_CASING[lowered])
+        elif any(ch.isdigit() for ch in word) or (word.isupper() and len(word) <= 4):
+            words.append(word)  # version numbers ("2024") and acronyms ("SQL")
+        else:
+            words.append(word[:1].upper() + word[1:].lower())
+    return " ".join(words)
 
 
 def _collect_cpu_brand_windows():
@@ -74,6 +155,8 @@ def collect_software():
     if winreg is None:
         return []
 
+    allowlist = _software_allowlist()
+
     names = set()
     for entry in UNINSTALL_KEYS:
         if entry is None:
@@ -90,8 +173,13 @@ def collect_software():
                     subkey_name = winreg.EnumKey(key, i)
                     with winreg.OpenKey(key, subkey_name) as subkey:
                         name, _ = winreg.QueryValueEx(subkey, "DisplayName")
-                        if name:
-                            names.add(name.strip())
+                        if not name:
+                            continue
+                        name = name.strip()
+                        if _is_software_noise(name):
+                            continue
+                        if allowlist is None or _name_matches(name, allowlist):
+                            names.add(_clean_software_name(name))
                 except OSError:
                     continue
 
@@ -123,18 +211,63 @@ def sync(payload):
     return response.json()
 
 
-def main():
-    dead_stock_no = input("Enter Dead Stock Number for this PC: ").strip()
+def parse_args(argv=None):
+    parser = argparse.ArgumentParser(
+        description="Collect this PC's hardware/software config and sync it to LABMON.",
+    )
+    parser.add_argument("--dead-stock", help="Dead stock number for this PC (skips the prompt)")
+    parser.add_argument(
+        "--department",
+        help="Department name — only needed the first time this PC is provisioned",
+    )
+    parser.add_argument(
+        "--lab",
+        help="Lab name — only needed the first time this PC is provisioned",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Collect and print the payload as JSON; do not POST it to the backend.",
+    )
+    return parser.parse_args(argv)
+
+
+def main(argv=None):
+    args = parse_args(argv)
+
+    dead_stock_no = (args.dead_stock or "").strip()
+    if not dead_stock_no and not args.dry_run:
+        dead_stock_no = input("Enter Dead Stock Number for this PC: ").strip()
     if not dead_stock_no:
-        print("Dead Stock Number is required.")
-        sys.exit(1)
+        if args.dry_run:
+            dead_stock_no = "DRY-RUN"
+        else:
+            print("Dead Stock Number is required.")
+            sys.exit(1)
 
     # Only needed the first time this PC is synced — an already-provisioned PC just
     # refreshes its hardware config if these are left blank.
-    department = input("Enter Department name (e.g. Computer Science) [leave blank if already set up]: ").strip()
-    lab = input("Enter Lab name (e.g. Lab 1) [leave blank if already set up]: ").strip()
+    if args.dry_run:
+        department = args.department
+        lab = args.lab
+    else:
+        department = (
+            args.department
+            if args.department is not None
+            else input("Enter Department name (e.g. Computer Science) [leave blank if already set up]: ").strip()
+        )
+        lab = (
+            args.lab
+            if args.lab is not None
+            else input("Enter Lab name (e.g. Lab 1) [leave blank if already set up]: ").strip()
+        )
 
     payload = build_payload(dead_stock_no, department, lab)
+
+    if args.dry_run:
+        print(json.dumps(payload, indent=2))
+        return
+
     print(f"Syncing config for {dead_stock_no} to {SYNC_ENDPOINT} ...")
 
     try:

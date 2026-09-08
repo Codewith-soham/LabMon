@@ -8,8 +8,12 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import dotenv from "dotenv";
-import mongoose from "mongoose";
+import mongoose, { Types } from "mongoose";
+import type { OtpEmailEvent } from "../utils/mailer.js";
+import type { PcDocument } from "../models/pc.model.js";
 
 dotenv.config();
 process.env.NODE_ENV = "test";
@@ -22,24 +26,24 @@ const { Pc } = await import("../models/pc.model.js");
 const { ROLES, OTP_PURPOSE } = await import("../config/constants.js");
 const { otpEvents } = await import("../utils/mailer.js");
 
-let server;
-let baseUrl;
+let server: Server;
+let baseUrl: string;
 
-const createdUserIds = [];
-const createdDeptIds = [];
-const createdLabIds = [];
-const createdPcIds = [];
+const createdUserIds: Types.ObjectId[] = [];
+const createdDeptIds: Types.ObjectId[] = [];
+const createdLabIds: Types.ObjectId[] = [];
+const createdPcIds: Types.ObjectId[] = [];
 
 // per-role access tokens, populated in `before`
-const tokens = {};
+const tokens = {} as Record<"labIncharge" | "hod" | "labInchargeB" | "deanInfra" | "admin", string>;
 
 // seeded PCs, populated in `before`
-let pcs = {};
+const pcs = {} as Record<"pcA1" | "pcA2" | "pcB1", PcDocument>;
 
 before(async () => {
-  await mongoose.connect(process.env.MONGO_URL);
+  await mongoose.connect(process.env.MONGO_URL as string);
   server = app.listen(0);
-  const { port } = server.address();
+  const { port } = server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${port}`;
 
   const suffix = crypto.randomBytes(6).toString("hex");
@@ -94,7 +98,7 @@ before(async () => {
     },
   });
   createdPcIds.push(pcA1._id, pcA2._id, pcB1._id);
-  pcs = { pcA1, pcA2, pcB1 };
+  Object.assign(pcs, { pcA1, pcA2, pcB1 });
 
   // --- users, one per role we need tokens for ---
   tokens.labIncharge = await registerLoginAndGetToken({
@@ -116,10 +120,10 @@ after(async () => {
   if (createdDeptIds.length) await Dept.deleteMany({ _id: { $in: createdDeptIds } });
   if (createdUserIds.length) await User.deleteMany({ _id: { $in: createdUserIds } });
   await mongoose.disconnect();
-  await new Promise((resolve) => server.close(resolve));
+  await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
-function randomUser(overrides = {}) {
+function randomUser(overrides: Record<string, unknown> = {}) {
   const id = crypto.randomBytes(6).toString("hex");
   return {
     name: `Test User ${id}`,
@@ -130,32 +134,32 @@ function randomUser(overrides = {}) {
   };
 }
 
-async function postJson(path, payload, extraHeaders = {}) {
+async function postJson(path: string, payload: unknown, extraHeaders: Record<string, string> = {}) {
   const res = await fetch(`${baseUrl}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...extraHeaders },
     body: JSON.stringify(payload),
   });
-  const body = await res.json();
+  const body: any = await res.json();
   return { res, body };
 }
 
-async function getJson(path, { token } = {}) {
+async function getJson(path: string, { token }: { token?: string } = {}) {
   const res = await fetch(`${baseUrl}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  const body = await res.json();
+  const body: any = await res.json();
   return { res, body };
 }
 
-function extractCookie(setCookieHeaders, name) {
+function extractCookie(setCookieHeaders: string[], name: string): string | undefined {
   const match = setCookieHeaders.find((c) => c.startsWith(`${name}=`));
-  return match ? match.split(";")[0].slice(name.length + 1) : undefined;
+  return match ? match.split(";")[0]?.slice(name.length + 1) : undefined;
 }
 
-function waitForOtp(email, purpose) {
+function waitForOtp(email: string, purpose: string): Promise<string> {
   return new Promise((resolve) => {
-    const handler = (payload) => {
+    const handler = (payload: OtpEmailEvent) => {
       if (payload.to === email && payload.purpose === purpose) {
         otpEvents.off("otp", handler);
         resolve(payload.otp);
@@ -168,7 +172,7 @@ function waitForOtp(email, purpose) {
 // registers, verifies email, logs in, and returns the resulting access token
 // as a plain string (ready for an Authorization header, same as the
 // accessToken cookie used in auth.test.js's logout test)
-async function registerLoginAndGetToken(overrides = {}) {
+async function registerLoginAndGetToken(overrides: Record<string, unknown> = {}): Promise<string> {
   const payload = randomUser(overrides);
 
   const emailOtpPromise = waitForOtp(payload.email, OTP_PURPOSE.EMAIL_VERIFICATION);
@@ -192,7 +196,9 @@ async function registerLoginAndGetToken(overrides = {}) {
     `setup: login failed for ${payload.email}: ${JSON.stringify(body)}`,
   );
 
-  return extractCookie(res.headers.getSetCookie(), "accessToken");
+  const token = extractCookie(res.headers.getSetCookie(), "accessToken");
+  assert.ok(token, "setup: expected an accessToken cookie after login");
+  return token;
 }
 
 test("search - rejects a request with no Authorization header (401)", async () => {
@@ -214,7 +220,7 @@ test("search - labIncharge with no filters sees only PCs in their own department
 
   assert.equal(res.status, 200);
   assert.equal(body.success, true);
-  const ids = body.data.map((pc) => pc._id);
+  const ids = body.data.map((pc: any) => pc._id);
   assert.ok(ids.includes(String(pcs.pcA1._id)));
   assert.ok(ids.includes(String(pcs.pcA2._id)));
   assert.ok(!ids.includes(String(pcs.pcB1._id)));
@@ -224,7 +230,7 @@ test("search - hod with no filters sees only PCs in their own department", async
   const { res, body } = await getJson("/api/v1/pc/search", { token: tokens.hod });
 
   assert.equal(res.status, 200);
-  const ids = body.data.map((pc) => pc._id);
+  const ids = body.data.map((pc: any) => pc._id);
   assert.ok(ids.includes(String(pcs.pcA1._id)));
   assert.ok(!ids.includes(String(pcs.pcB1._id)));
 });
@@ -233,7 +239,7 @@ test("search - deanInfra with no filters sees PCs across all departments", async
   const { res, body } = await getJson("/api/v1/pc/search", { token: tokens.deanInfra });
 
   assert.equal(res.status, 200);
-  const ids = body.data.map((pc) => pc._id);
+  const ids = body.data.map((pc: any) => pc._id);
   assert.ok(ids.includes(String(pcs.pcA1._id)));
   assert.ok(ids.includes(String(pcs.pcB1._id)));
 });
@@ -242,7 +248,7 @@ test("search - cpu filter matches partially and case-insensitively, within depar
   const { res, body } = await getJson("/api/v1/pc/search?cpu=intel", { token: tokens.labIncharge });
 
   assert.equal(res.status, 200);
-  const ids = body.data.map((pc) => pc._id);
+  const ids = body.data.map((pc: any) => pc._id);
   assert.ok(ids.includes(String(pcs.pcA1._id)));
   assert.ok(!ids.includes(String(pcs.pcA2._id))); // AMD, filtered out
 });
@@ -253,7 +259,7 @@ test("search - software filter matches an element of the software array", async 
   });
 
   assert.equal(res.status, 200);
-  const ids = body.data.map((pc) => pc._id);
+  const ids = body.data.map((pc: any) => pc._id);
   assert.ok(ids.includes(String(pcs.pcA1._id)));
   assert.ok(ids.includes(String(pcs.pcB1._id)));
   assert.ok(!ids.includes(String(pcs.pcA2._id))); // only has Firefox
@@ -265,7 +271,7 @@ test("search - warrantyStatus filter matches exactly", async () => {
   });
 
   assert.equal(res.status, 200);
-  const ids = body.data.map((pc) => pc._id);
+  const ids = body.data.map((pc: any) => pc._id);
   assert.deepEqual(ids, [String(pcs.pcA2._id)]);
 });
 
@@ -273,7 +279,7 @@ test("search - a department-scoped role cannot see another department's PC even 
   const { res, body } = await getJson("/api/v1/pc/search?cpu=intel", { token: tokens.labIncharge });
 
   assert.equal(res.status, 200);
-  const ids = body.data.map((pc) => pc._id);
+  const ids = body.data.map((pc: any) => pc._id);
   assert.ok(!ids.includes(String(pcs.pcB1._id)));
 });
 

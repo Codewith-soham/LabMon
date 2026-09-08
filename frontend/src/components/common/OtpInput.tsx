@@ -1,25 +1,35 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ChangeEvent, type ClipboardEvent, type KeyboardEvent } from 'react';
 import './OtpInput.css';
 
 const OTP_LENGTH = 6;
 
-function OtpInput({ value, onChange, status = 'idle', disabled }) {
-  const inputRefs = useRef([]);
+export type OtpStatus = 'idle' | 'error' | 'success';
+
+interface OtpInputProps {
+  value: string;
+  onChange: (value: string) => void;
+  status?: OtpStatus;
+  disabled?: boolean;
+}
+
+function OtpInput({ value, onChange, status = 'idle', disabled }: OtpInputProps) {
+  const inputRefs = useRef<Array<HTMLInputElement | null>>([]);
   const digits = Array.from({ length: OTP_LENGTH }, (_, i) => value[i] || '');
 
   useEffect(() => {
     if (status === 'idle' && !disabled) {
       inputRefs.current[0]?.focus();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const setDigit = (index, digit) => {
+  const setDigit = (index: number, digit: string) => {
     const next = digits.slice();
     next[index] = digit;
     onChange(next.join(''));
   };
 
-  const handleChange = (index) => (e) => {
+  const handleChange = (index: number) => (e: ChangeEvent<HTMLInputElement>) => {
     const raw = e.target.value.replace(/\D/g, '');
     if (!raw) {
       setDigit(index, '');
@@ -37,7 +47,7 @@ function OtpInput({ value, onChange, status = 'idle', disabled }) {
     inputRefs.current[nextIndex]?.focus();
   };
 
-  const handleKeyDown = (index) => (e) => {
+  const handleKeyDown = (index: number) => (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Backspace') {
       if (digits[index]) {
         setDigit(index, '');
@@ -53,7 +63,7 @@ function OtpInput({ value, onChange, status = 'idle', disabled }) {
     }
   };
 
-  const handlePaste = (e) => {
+  const handlePaste = (e: ClipboardEvent<HTMLDivElement>) => {
     e.preventDefault();
     const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, OTP_LENGTH);
     if (pasted) {
@@ -68,7 +78,9 @@ function OtpInput({ value, onChange, status = 'idle', disabled }) {
       {digits.map((digit, index) => (
         <input
           key={index}
-          ref={(el) => (inputRefs.current[index] = el)}
+          ref={(el) => {
+            inputRefs.current[index] = el;
+          }}
           type="text"
           inputMode="numeric"
           maxLength={1}

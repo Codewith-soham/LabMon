@@ -1,22 +1,34 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import '../complaints/ComplaintsDashboard.css';
 import '../auth/AuthPage.css';
 import './PcSearchPage.css';
 import PcHealthCardModal from './PcHealthCardModal';
 import { WARRANTY_STATUS_META } from './pcSearchMeta';
-import { searchPcs } from '../../services/pcService';
+import { searchPcs, type PcSearchParams } from '../../services/pcService';
 import { useAuth } from '../../hooks/useAuth';
 import { ROLES } from '../../constants/roles';
-import { ROUTES } from '../../constants/routes';
+import { ROUTES, type RoutePath } from '../../constants/routes';
+import { getApiErrorMessage } from '../../types/api';
+import type { Pc, UserRole } from '../../types/domain';
 
-const HOME_ROUTE_BY_ROLE = {
+const HOME_ROUTE_BY_ROLE: Partial<Record<UserRole, RoutePath>> = {
   [ROLES.LAB_INCHARGE]: ROUTES.LAB_INCHARGE_HOME,
   [ROLES.HOD]: ROUTES.HOD_HOME,
   [ROLES.DEAN_INFRA]: ROUTES.DEAN_INFRA_HOME,
 };
 
-const INITIAL_FILTERS = {
+interface PcFilters {
+  deadStockNo: string;
+  cpu: string;
+  ram: string;
+  disk: string;
+  os: string;
+  software: string;
+  warrantyStatus: string;
+}
+
+const INITIAL_FILTERS: PcFilters = {
   deadStockNo: '',
   cpu: '',
   ram: '',
@@ -26,33 +38,34 @@ const INITIAL_FILTERS = {
   warrantyStatus: '',
 };
 
-function buildParams(filters) {
-  const params = {};
-  Object.entries(filters).forEach(([key, value]) => {
-    if (value.trim()) params[key] = value.trim();
+function buildParams(filters: PcFilters): PcSearchParams {
+  const params: PcSearchParams = {};
+  (Object.keys(filters) as Array<keyof PcFilters>).forEach((key) => {
+    const value = filters[key].trim();
+    if (value) params[key] = value;
   });
   return params;
 }
 
 function PcSearchPage() {
-  const [filters, setFilters] = useState(INITIAL_FILTERS);
-  const [results, setResults] = useState([]);
+  const [filters, setFilters] = useState<PcFilters>(INITIAL_FILTERS);
+  const [results, setResults] = useState<Pc[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [selectedPc, setSelectedPc] = useState(null);
+  const [selectedPc, setSelectedPc] = useState<Pc | null>(null);
   const { user } = useAuth();
   const navigate = useNavigate();
 
   const handleBack = () => {
-    navigate(HOME_ROUTE_BY_ROLE[user?.role] || ROUTES.LOGIN);
+    navigate((user && HOME_ROUTE_BY_ROLE[user.role]) || ROUTES.LOGIN);
   };
 
-  const runSearch = (params) => {
+  const runSearch = (params: PcSearchParams) => {
     setLoading(true);
     setLoadError('');
     searchPcs(params)
       .then((res) => setResults(res.data?.data || []))
-      .catch((err) => setLoadError(err.response?.data?.message || 'Failed to load PCs.'))
+      .catch((err: unknown) => setLoadError(getApiErrorMessage(err, 'Failed to load PCs.')))
       .finally(() => setLoading(false));
   };
 
@@ -61,11 +74,12 @@ function PcSearchPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const updateField = (field) => (e) => {
-    setFilters((prev) => ({ ...prev, [field]: e.target.value }));
-  };
+  const updateField =
+    (field: keyof PcFilters) => (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+      setFilters((prev) => ({ ...prev, [field]: e.target.value }));
+    };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     runSearch(buildParams(filters));
   };
@@ -201,7 +215,12 @@ function PcSearchPage() {
               <button type="submit" className="submit-btn pc-search-submit" disabled={loading}>
                 {loading ? 'Searching…' : 'Search'}
               </button>
-              <button type="button" className="pc-search-reset" onClick={handleReset} disabled={loading}>
+              <button
+                type="button"
+                className="pc-search-reset"
+                onClick={handleReset}
+                disabled={loading}
+              >
                 Reset
               </button>
             </div>

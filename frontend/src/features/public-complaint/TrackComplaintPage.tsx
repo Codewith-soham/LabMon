@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import './PublicComplaint.css';
 import '../auth/AuthPage.css';
@@ -6,14 +6,16 @@ import bgImage from '../../assets/college-bg.jpg';
 import { trackComplaint } from '../../services/complaintService';
 import { ROLES, COMPLAINT_STATUS } from '../../constants/roles';
 import { ROUTES } from '../../constants/routes';
+import { getApiErrorMessage } from '../../types/api';
+import type { ComplaintLevel, ComplaintStatus, TrackedComplaint } from '../../types/domain';
 
-const LEVEL_LABELS = {
+const LEVEL_LABELS: Record<ComplaintLevel, string> = {
   [ROLES.LAB_INCHARGE]: 'Lab Incharge',
   [ROLES.HOD]: 'HOD',
   [ROLES.DEAN_INFRA]: 'Dean Infra',
 };
 
-const STATUS_LABELS = {
+const STATUS_LABELS: Record<ComplaintStatus, string> = {
   [COMPLAINT_STATUS.OPEN]: 'Open',
   [COMPLAINT_STATUS.ESCALATED_HOD]: 'Escalated to HOD',
   [COMPLAINT_STATUS.ESCALATED_DEAN]: 'Escalated to Dean Infra',
@@ -22,11 +24,11 @@ const STATUS_LABELS = {
 
 function TrackComplaintPage() {
   const [token, setToken] = useState('');
-  const [complaint, setComplaint] = useState(null);
+  const [complaint, setComplaint] = useState<TrackedComplaint | null>(null);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
     setComplaint(null);
@@ -34,8 +36,8 @@ function TrackComplaintPage() {
     try {
       const res = await trackComplaint(token.trim());
       setComplaint(res.data?.data || null);
-    } catch (err) {
-      setError(err.response?.data?.message || 'Invalid tracking token.');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Invalid tracking token.'));
     } finally {
       setSubmitting(false);
     }
@@ -95,9 +97,7 @@ function TrackComplaintPage() {
             </div>
             <div className="status-row">
               <span className="status-label">Raised On</span>
-              <span className="status-value">
-                {new Date(complaint.createdAt).toLocaleString()}
-              </span>
+              <span className="status-value">{new Date(complaint.createdAt).toLocaleString()}</span>
             </div>
           </div>
         )}

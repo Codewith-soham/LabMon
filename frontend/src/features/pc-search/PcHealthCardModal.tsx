@@ -3,21 +3,32 @@ import DetailModal from '../../components/common/DetailModal';
 import { WARRANTY_STATUS_META, formatDateTime } from './pcSearchMeta';
 import { formatDate } from '../../utils/formatDate';
 import { getPcHealthCard } from '../../services/pcService';
+import { getApiErrorMessage } from '../../types/api';
+import type { Pc } from '../../types/domain';
 
-function PcHealthCardModal({ pc, onClose, onRefresh }) {
+interface PcHealthCardModalProps {
+  pc: Pc | null;
+  onClose: () => void;
+  onRefresh?: (pc: Pc | undefined) => void;
+}
+
+function PcHealthCardModal({ pc, onClose, onRefresh }: PcHealthCardModalProps) {
   const [refreshing, setRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState('');
 
   if (!pc) return null;
 
-  const meta = WARRANTY_STATUS_META[pc.warranty?.status] || { label: pc.warranty?.status, modifier: 'open' };
+  const meta = WARRANTY_STATUS_META[pc.warranty?.status] || {
+    label: pc.warranty?.status,
+    modifier: 'open',
+  };
 
   const handleRefresh = () => {
     setRefreshing(true);
     setRefreshError('');
     getPcHealthCard(pc._id)
       .then((res) => onRefresh?.(res.data?.data))
-      .catch((err) => setRefreshError(err.response?.data?.message || 'Failed to refresh.'))
+      .catch((err: unknown) => setRefreshError(getApiErrorMessage(err, 'Failed to refresh.')))
       .finally(() => setRefreshing(false));
   };
 
@@ -27,7 +38,12 @@ function PcHealthCardModal({ pc, onClose, onRefresh }) {
       title={pc.deadStockNo}
       onClose={onClose}
       headerExtra={
-        <button type="button" className="pc-search-reset" onClick={handleRefresh} disabled={refreshing}>
+        <button
+          type="button"
+          className="pc-search-reset"
+          onClick={handleRefresh}
+          disabled={refreshing}
+        >
           {refreshing ? 'Refreshing…' : 'Refresh'}
         </button>
       }

@@ -1,27 +1,41 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ChangeEvent, type FormEvent } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import './AuthPage.css';
 import bgImage from '../../assets/college-bg.jpg';
 import { login, register } from '../../services/authService';
 import { listDepartments } from '../../services/deptService';
 import { ROLES } from '../../constants/roles';
-import { ROUTES } from '../../constants/routes';
+import { ROUTES, type RoutePath } from '../../constants/routes';
 import { useAuth } from '../../hooks/useAuth';
+import { getApiErrorMessage } from '../../types/api';
+import type { Department, UserRole } from '../../types/domain';
 import OtpVerification from './OtpVerification';
 
-const SIGNUP_ROLES = [
+type AuthTab = 'login' | 'signup';
+type AuthStep = 'form' | 'otp';
+
+interface AuthForm {
+  name: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+  role: UserRole;
+  department: string;
+}
+
+const SIGNUP_ROLES: ReadonlyArray<{ value: UserRole; label: string }> = [
   { value: ROLES.LAB_INCHARGE, label: 'Lab Incharge' },
   { value: ROLES.HOD, label: 'HOD' },
   { value: ROLES.DEAN_INFRA, label: 'Dean Infra' },
 ];
 
-const HOME_ROUTE_BY_ROLE = {
+const HOME_ROUTE_BY_ROLE: Partial<Record<UserRole, RoutePath>> = {
   [ROLES.LAB_INCHARGE]: ROUTES.LAB_INCHARGE_HOME,
   [ROLES.HOD]: ROUTES.HOD_HOME,
   [ROLES.DEAN_INFRA]: ROUTES.DEAN_INFRA_HOME,
 };
 
-const INITIAL_FORM = {
+const INITIAL_FORM: AuthForm = {
   name: '',
   email: '',
   password: '',
@@ -31,13 +45,13 @@ const INITIAL_FORM = {
 };
 
 function AuthPage() {
-  const [activeTab, setActiveTab] = useState('login');
-  const [step, setStep] = useState('form');
-  const [form, setForm] = useState(INITIAL_FORM);
+  const [activeTab, setActiveTab] = useState<AuthTab>('login');
+  const [step, setStep] = useState<AuthStep>('form');
+  const [form, setForm] = useState<AuthForm>(INITIAL_FORM);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  const [departments, setDepartments] = useState([]);
+  const [departments, setDepartments] = useState<Department[]>([]);
   const navigate = useNavigate();
   const { setUser } = useAuth();
 
@@ -61,17 +75,24 @@ function AuthPage() {
     };
   }, [activeTab]);
 
-  const updateField = (field) => (e) => {
-    setForm((prev) => ({ ...prev, [field]: e.target.value }));
+  const updateField =
+    (field: keyof Omit<AuthForm, 'role'>) =>
+    (e: ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+      setForm((prev) => ({ ...prev, [field]: e.target.value }));
+    };
+
+  // The role <select> only ever offers SIGNUP_ROLES values, so this is a sound narrowing.
+  const updateRole = (e: ChangeEvent<HTMLSelectElement>) => {
+    setForm((prev) => ({ ...prev, role: e.target.value as UserRole }));
   };
 
-  const switchTab = (tab) => {
+  const switchTab = (tab: AuthTab) => {
     setActiveTab(tab);
     setError('');
     setInfo('');
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
     setInfo('');
@@ -98,10 +119,11 @@ function AuthPage() {
         if (user) {
           setUser(user);
         }
-        navigate(HOME_ROUTE_BY_ROLE[user?.role] || ROUTES.LOGIN, { replace: true });
+        const homeRoute = (user && HOME_ROUTE_BY_ROLE[user.role]) || ROUTES.LOGIN;
+        navigate(homeRoute, { replace: true });
       }
-    } catch (err) {
-      setError(err.response?.data?.message || 'Something went wrong. Please try again.');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Something went wrong. Please try again.'));
     } finally {
       setSubmitting(false);
     }
@@ -194,12 +216,7 @@ function AuthPage() {
                 <label className="field-label" htmlFor="role">
                   Role
                 </label>
-                <select
-                  id="role"
-                  className="field-input"
-                  value={form.role}
-                  onChange={updateField('role')}
-                >
+                <select id="role" className="field-input" value={form.role} onChange={updateRole}>
                   {SIGNUP_ROLES.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}

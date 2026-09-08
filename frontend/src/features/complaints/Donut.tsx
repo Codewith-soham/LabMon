@@ -3,7 +3,13 @@ const STROKE = 5;
 const RADIUS = (SIZE - STROKE) / 2;
 const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 
-function Donut({ value, total, colorClass }) {
+interface DonutProps {
+  value: number;
+  total: number;
+  colorClass: string;
+}
+
+function Donut({ value, total, colorClass }: DonutProps) {
   const ratio = total > 0 ? value / total : 0;
   const offset = CIRCUMFERENCE * (1 - ratio);
 

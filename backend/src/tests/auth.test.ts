@@ -9,8 +9,11 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import dotenv from "dotenv";
 import mongoose from "mongoose";
+import type { OtpEmailEvent } from "../utils/mailer.js";
 
 dotenv.config();
 process.env.NODE_ENV = "test";
@@ -20,15 +23,22 @@ const { User } = await import("../models/user.model.js");
 const { ROLES, OTP_PURPOSE } = await import("../config/constants.js");
 const { otpEvents } = await import("../utils/mailer.js");
 
-let server;
-let baseUrl;
-const createdUserIds = [];
+let server: Server;
+let baseUrl: string;
+const createdUserIds: string[] = [];
+
+function serverPort(s: Server): number {
+  const address = s.address();
+  if (!address || typeof address === "string") {
+    throw new Error("expected an AddressInfo from server.address()");
+  }
+  return address.port satisfies number;
+}
 
 before(async () => {
-  await mongoose.connect(process.env.MONGO_URL);
+  await mongoose.connect(process.env.MONGO_URL as string);
   server = app.listen(0);
-  const { port } = server.address();
-  baseUrl = `http://127.0.0.1:${port}`;
+  baseUrl = `http://127.0.0.1:${serverPort(server)}`;
 });
 
 after(async () => {
@@ -36,10 +46,12 @@ after(async () => {
     await User.deleteMany({ _id: { $in: createdUserIds } });
   }
   await mongoose.disconnect();
-  await new Promise((resolve) => server.close(resolve));
+  await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
-function randomUser(overrides = {}) {
+type JsonResult = { res: Response; body: any };
+
+function randomUser(overrides: Record<string, unknown> = {}) {
   const id = crypto.randomBytes(6).toString("hex");
   return {
     name: `Test User ${id}`,
@@ -50,36 +62,40 @@ function randomUser(overrides = {}) {
   };
 }
 
-async function postJson(path, payload, extraHeaders = {}) {
+async function postJson(
+  path: string,
+  payload: unknown,
+  extraHeaders: Record<string, string> = {},
+): Promise<JsonResult> {
   const res = await fetch(`${baseUrl}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...extraHeaders },
     body: JSON.stringify(payload),
   });
-  const body = await res.json();
+  const body: any = await res.json();
   return { res, body };
 }
 
 // pulls just the "name=value" pairs back out of Set-Cookie headers so they can
 // be replayed on the next request via a Cookie header (fetch has no cookie jar)
-function cookieHeaderFrom(setCookieHeaders) {
+function cookieHeaderFrom(setCookieHeaders: string[]): string {
   return setCookieHeaders.map((c) => c.split(";")[0]).join("; ");
 }
 
-function extractCookie(setCookieHeaders, name) {
+function extractCookie(setCookieHeaders: string[], name: string): string | undefined {
   const match = setCookieHeaders.find((c) => c.startsWith(`${name}=`));
-  return match ? match.split(";")[0].slice(name.length + 1) : undefined;
+  return match ? match.split(";")[0]?.slice(name.length + 1) : undefined;
 }
 
 // refresh tokens are JWTs signed with second-resolution "iat"; two tokens
 // minted for the same user within the same second are byte-for-byte
 // identical, so rotation tests need to cross a second boundary to be
 // meaningful (otherwise the "old" token IS the "new" token).
-function sleepPastCurrentSecond() {
+function sleepPastCurrentSecond(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 1000 - (Date.now() % 1000) + 50));
 }
 
-async function loginAndVerify(payload) {
+async function loginAndVerify(payload: { email: string; password: string }) {
   const { res, body } = await postJson("/api/v1/auth/login", {
     email: payload.email,
     password: payload.password,
@@ -94,9 +110,9 @@ async function loginAndVerify(payload) {
   };
 }
 
-function waitForOtp(email, purpose) {
+function waitForOtp(email: string, purpose: string): Promise<string> {
   return new Promise((resolve) => {
-    const handler = (payload) => {
+    const handler = (payload: OtpEmailEvent) => {
       if (payload.to === email && payload.purpose === purpose) {
         otpEvents.off("otp", handler);
         resolve(payload.otp);
@@ -106,7 +122,7 @@ function waitForOtp(email, purpose) {
   });
 }
 
-async function registerRandomUser(overrides = {}) {
+async function registerRandomUser(overrides: Record<string, unknown> = {}) {
   const payload = randomUser(overrides);
   const otpPromise = waitForOtp(payload.email, OTP_PURPOSE.EMAIL_VERIFICATION);
   const { res, body } = await postJson("/api/v1/auth/register", payload);
@@ -117,7 +133,7 @@ async function registerRandomUser(overrides = {}) {
   return { payload, res, body, otp };
 }
 
-async function registerAndVerifyUser(overrides = {}) {
+async function registerAndVerifyUser(overrides: Record<string, unknown> = {}) {
   const { payload, otp } = await registerRandomUser(overrides);
   await postJson("/api/v1/auth/verify-email", { email: payload.email, otp });
   return { payload };

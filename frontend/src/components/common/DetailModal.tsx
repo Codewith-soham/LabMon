@@ -1,3 +1,16 @@
+import type { MouseEvent, ReactNode } from 'react';
+
+interface DetailModalProps {
+  label: string;
+  title: ReactNode;
+  onClose: () => void;
+  overlayClassName?: string;
+  cardClassName?: string;
+  wrapBody?: boolean;
+  headerExtra?: ReactNode;
+  children: ReactNode;
+}
+
 function DetailModal({
   label,
   title,
@@ -7,8 +20,8 @@ function DetailModal({
   wrapBody = true,
   headerExtra,
   children,
-}) {
-  const handleOverlayClick = (e) => {
+}: DetailModalProps) {
+  const handleOverlayClick = (e: MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) onClose();
   };
 

@@ -1,14 +1,29 @@
-import { createContext, useEffect, useMemo, useState } from 'react';
+import {
+  createContext,
+  useEffect,
+  useMemo,
+  useState,
+  type Dispatch,
+  type PropsWithChildren,
+  type SetStateAction,
+} from 'react';
 import { getCurrentUser } from '../../services/authService';
+import type { AuthUser } from '../../types/domain';
 
-export const AuthContext = createContext({
+export interface AuthContextValue {
+  user: AuthUser | null;
+  setUser: Dispatch<SetStateAction<AuthUser | null>>;
+  loading: boolean;
+}
+
+export const AuthContext = createContext<AuthContextValue>({
   user: null,
   setUser: () => {},
   loading: true,
 });
 
-export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
+export function AuthProvider({ children }: PropsWithChildren) {
+  const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   // The access token lives in an httpOnly cookie, so a hard refresh loses this
@@ -17,7 +32,7 @@ export function AuthProvider({ children }) {
     let cancelled = false;
     getCurrentUser()
       .then((res) => {
-        if (!cancelled) setUser(res.data?.data?.user || null);
+        if (!cancelled) setUser(res.data?.data?.user ?? null);
       })
       .catch(() => {
         if (!cancelled) setUser(null);
@@ -30,7 +45,7 @@ export function AuthProvider({ children }) {
     };
   }, []);
 
-  const value = useMemo(() => ({ user, setUser, loading }), [user, loading]);
+  const value = useMemo<AuthContextValue>(() => ({ user, setUser, loading }), [user, loading]);
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

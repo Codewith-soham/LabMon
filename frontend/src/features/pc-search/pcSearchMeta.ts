@@ -1,9 +1,16 @@
-export const WARRANTY_STATUS_META = {
+import type { WarrantyStatus } from '../../types/domain';
+
+interface WarrantyMeta {
+  label: string;
+  modifier: 'resolved' | 'open';
+}
+
+export const WARRANTY_STATUS_META: Record<WarrantyStatus, WarrantyMeta> = {
   Active: { label: 'Active', modifier: 'resolved' },
   Expired: { label: 'Expired', modifier: 'open' },
 };
 
-export function formatDateTime(iso) {
+export function formatDateTime(iso: string | null | undefined): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleString('en-IN', {
     day: '2-digit',

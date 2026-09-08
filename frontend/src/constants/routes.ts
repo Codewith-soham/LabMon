@@ -9,4 +9,6 @@ export const ROUTES = {
   REQUESTS: '/requests',
   RAISE_COMPLAINT: '/raise-complaint',
   TRACK_COMPLAINT: '/track-complaint',
-};
+} as const;
+
+export type RoutePath = (typeof ROUTES)[keyof typeof ROUTES];

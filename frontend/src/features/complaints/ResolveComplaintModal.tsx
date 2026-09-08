@@ -1,12 +1,27 @@
-import { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import DetailModal from '../../components/common/DetailModal';
+import type { Complaint } from '../../types/domain';
 
-function ResolveComplaintModal({ complaint, onCancel, onSubmit, submitting, error }) {
+interface ResolveComplaintModalProps {
+  complaint: Complaint | null;
+  onCancel: () => void;
+  onSubmit: (id: string, remarks: string) => void;
+  submitting: boolean;
+  error: string;
+}
+
+function ResolveComplaintModal({
+  complaint,
+  onCancel,
+  onSubmit,
+  submitting,
+  error,
+}: ResolveComplaintModalProps) {
   const [remarks, setRemarks] = useState('');
 
   if (!complaint) return null;
 
-  const handleSubmit = (e) => {
+  const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     onSubmit(complaint._id, remarks.trim());
   };

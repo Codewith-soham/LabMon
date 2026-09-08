@@ -1,8 +1,10 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import dotenv from "dotenv";
-import mongoose from "mongoose";
+import mongoose, { Types } from "mongoose";
 
 dotenv.config();
 process.env.NODE_ENV = "test";
@@ -12,18 +14,18 @@ const { Dept } = await import("../models/department.model.js");
 const { Lab } = await import("../models/lab.model.js");
 const { Pc } = await import("../models/pc.model.js");
 
-let server;
-let baseUrl;
-const cleanupIds = {
+let server: Server;
+let baseUrl: string;
+const cleanupIds: Record<"pc" | "lab" | "dept", Types.ObjectId[]> = {
   pc: [],
   lab: [],
   dept: [],
 };
 
 before(async () => {
-  await mongoose.connect(process.env.MONGO_URL);
+  await mongoose.connect(process.env.MONGO_URL as string);
   server = app.listen(0);
-  const { port } = server.address();
+  const { port } = server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${port}`;
 });
 
@@ -39,21 +41,21 @@ after(async () => {
   }
 
   await mongoose.disconnect();
-  await new Promise((resolve) => server.close(resolve));
+  await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
-async function postJson(path, payload) {
+async function postJson(path: string, payload: unknown) {
   const res = await fetch(`${baseUrl}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
 
-  const body = await res.json();
+  const body: any = await res.json();
   return { res, body };
 }
 
-function randomSuffix() {
+function randomSuffix(): string {
   return crypto.randomBytes(5).toString("hex");
 }
 
@@ -111,7 +113,8 @@ test("pc sync - updates config and lastSyncedAt for a valid deadStockNo", async 
   assert.ok(lastSyncedAt <= afterRequest + 1000);
 
   const persisted = await Pc.findById(pc._id).lean();
-  assert.equal(new Date(persisted.config.lastSyncedAt).getTime(), lastSyncedAt);
+  assert.ok(persisted);
+  assert.equal(new Date(persisted.config.lastSyncedAt as Date).getTime(), lastSyncedAt);
   assert.deepEqual(persisted.config.software, payload.config.software);
 });
 

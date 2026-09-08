@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import './PublicComplaint.css';
 import '../auth/AuthPage.css';
@@ -6,8 +6,17 @@ import bgImage from '../../assets/college-bg.jpg';
 import { raiseComplaint } from '../../services/complaintService';
 import { lookupPc } from '../../services/pcService';
 import { ROUTES } from '../../constants/routes';
+import { getApiErrorMessage } from '../../types/api';
+import type { PcLookup } from '../../types/domain';
 
-const INITIAL_FORM = {
+interface ComplaintForm {
+  deadStockNo: string;
+  description: string;
+  name: string;
+  contact: string;
+}
+
+const INITIAL_FORM: ComplaintForm = {
   deadStockNo: '',
   description: '',
   name: '',
@@ -15,21 +24,23 @@ const INITIAL_FORM = {
 };
 
 function RaiseComplaintPage() {
-  const [form, setForm] = useState(INITIAL_FORM);
+  const [form, setForm] = useState<ComplaintForm>(INITIAL_FORM);
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [token, setToken] = useState('');
-  const [pcInfo, setPcInfo] = useState(null);
+  const [pcInfo, setPcInfo] = useState<PcLookup | null>(null);
   const [pcCheckError, setPcCheckError] = useState('');
   const [checkingPc, setCheckingPc] = useState(false);
 
-  const updateField = (field) => (e) => {
-    setForm((prev) => ({ ...prev, [field]: e.target.value }));
-    if (field === 'deadStockNo') {
-      setPcInfo(null);
-      setPcCheckError('');
-    }
-  };
+  const updateField =
+    (field: keyof ComplaintForm) =>
+    (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      setForm((prev) => ({ ...prev, [field]: e.target.value }));
+      if (field === 'deadStockNo') {
+        setPcInfo(null);
+        setPcCheckError('');
+      }
+    };
 
   const handleDeadStockBlur = async () => {
     const value = form.deadStockNo.trim();
@@ -38,14 +49,14 @@ function RaiseComplaintPage() {
     try {
       const res = await lookupPc(value);
       setPcInfo(res.data?.data || null);
-    } catch (err) {
-      setPcCheckError(err.response?.data?.message || 'PC not found.');
+    } catch (err: unknown) {
+      setPcCheckError(getApiErrorMessage(err, 'PC not found.'));
     } finally {
       setCheckingPc(false);
     }
   };
 
-  const handleSubmit = async (e) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
     setSubmitting(true);
@@ -56,8 +67,8 @@ function RaiseComplaintPage() {
         raisedBy: { name: form.name.trim(), contact: form.contact.trim() },
       });
       setToken(res.data?.data?.token || '');
-    } catch (err) {
-      setError(err.response?.data?.message || 'Something went wrong. Please try again.');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Something went wrong. Please try again.'));
     } finally {
       setSubmitting(false);
     }

@@ -7,8 +7,11 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import dotenv from "dotenv";
-import mongoose from "mongoose";
+import mongoose, { Types } from "mongoose";
+import type { Role } from "../config/constants.js";
 
 dotenv.config();
 process.env.NODE_ENV = "test";
@@ -21,9 +24,11 @@ const { Complaint } = await import("../models/complaint.model.js");
 const { ROLES, COMPLAINT_STATUS } = await import("../config/constants.js");
 const { generateAccessToken } = await import("../utils/tokenGeneration.js");
 
-let server;
-let baseUrl;
-const cleanupIds = {
+type JsonResult = { res: Response; body: any };
+
+let server: Server;
+let baseUrl: string;
+const cleanupIds: Record<"complaint" | "pc" | "lab" | "dept", Types.ObjectId[]> = {
   complaint: [],
   pc: [],
   lab: [],
@@ -31,9 +36,9 @@ const cleanupIds = {
 };
 
 before(async () => {
-  await mongoose.connect(process.env.MONGO_URL);
+  await mongoose.connect(process.env.MONGO_URL as string);
   server = app.listen(0);
-  const { port } = server.address();
+  const { port } = server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${port}`;
 });
 
@@ -52,18 +57,18 @@ after(async () => {
   }
 
   await mongoose.disconnect();
-  await new Promise((resolve) => server.close(resolve));
+  await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
-function randomSuffix() {
+function randomSuffix(): string {
   return crypto.randomBytes(5).toString("hex");
 }
 
-function tokenFor({ role, department }) {
+function tokenFor({ role, department }: { role: Role; department: Types.ObjectId | null }): string {
   return generateAccessToken({ _id: new mongoose.Types.ObjectId(), role, department });
 }
 
-async function postJson(path, payload, token) {
+async function postJson(path: string, payload: unknown, token?: string) {
   const res = await fetch(`${baseUrl}${path}`, {
     method: "POST",
     headers: {
@@ -72,11 +77,11 @@ async function postJson(path, payload, token) {
     },
     body: JSON.stringify(payload),
   });
-  const body = await res.json();
+  const body: any = await res.json();
   return { res, body };
 }
 
-async function patchJson(path, payload, token) {
+async function patchJson(path: string, payload: unknown, token?: string) {
   const res = await fetch(`${baseUrl}${path}`, {
     method: "PATCH",
     headers: {
@@ -85,19 +90,19 @@ async function patchJson(path, payload, token) {
     },
     body: JSON.stringify(payload),
   });
-  const body = await res.json();
+  const body: any = await res.json();
   return { res, body };
 }
 
-async function getJson(path, token) {
+async function getJson(path: string, token?: string) {
   const res = await fetch(`${baseUrl}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  const body = await res.json();
+  const body: any = await res.json();
   return { res, body };
 }
 
-async function makePc(overrides = {}) {
+async function makePc(overrides: Record<string, unknown> = {}) {
   const suffix = randomSuffix();
   const dept = await Dept.create({
     name: `Complaint Dept ${suffix}`,
@@ -119,7 +124,10 @@ async function makePc(overrides = {}) {
   return { pc, dept, lab };
 }
 
-async function raiseComplaint(pc, overrides = {}) {
+async function raiseComplaint(
+  pc: { deadStockNo: string },
+  overrides: Record<string, unknown> = {},
+) {
   const { res, body } = await postJson("/api/v1/complaint", {
     deadStockNo: pc.deadStockNo,
     description: "Monitor not turning on",
@@ -299,8 +307,8 @@ test("list complaints - a labIncharge only sees complaints from their own depart
 
   assert.equal(res.status, 200);
   assert.equal(body.success, true);
-  assert.ok(body.data.every((c) => c.department?._id === String(ownDept._id)));
-  assert.ok(body.data.some((c) => c._id === ownComplaint.data._id));
+  assert.ok(body.data.every((c: any) => c.department?._id === String(ownDept._id)));
+  assert.ok(body.data.some((c: any) => c._id === ownComplaint.data._id));
 });
 
 test("list complaints - hod does not see a complaint still at labIncharge level", async () => {
@@ -311,7 +319,7 @@ test("list complaints - hod does not see a complaint still at labIncharge level"
   const { res, body } = await getJson("/api/v1/complaint", token);
 
   assert.equal(res.status, 200);
-  assert.ok(body.data.every((c) => c._id !== created.data._id));
+  assert.ok(body.data.every((c: any) => c._id !== created.data._id));
 });
 
 test("list complaints - hod sees a complaint once it is escalated to them, across their own department only", async () => {
@@ -324,8 +332,8 @@ test("list complaints - hod sees a complaint once it is escalated to them, acros
   const { res, body } = await getJson("/api/v1/complaint", hodToken);
 
   assert.equal(res.status, 200);
-  assert.ok(body.data.some((c) => c._id === created.data._id));
-  assert.ok(body.data.every((c) => c.department?._id === String(dept._id)));
+  assert.ok(body.data.some((c: any) => c._id === created.data._id));
+  assert.ok(body.data.every((c: any) => c.department?._id === String(dept._id)));
 });
 
 test("list complaints - deanInfra does not see a complaint still at hod level", async () => {
@@ -338,7 +346,7 @@ test("list complaints - deanInfra does not see a complaint still at hod level", 
   const { res, body } = await getJson("/api/v1/complaint", deanToken);
 
   assert.equal(res.status, 200);
-  assert.ok(body.data.every((c) => c._id !== created.data._id));
+  assert.ok(body.data.every((c: any) => c._id !== created.data._id));
 });
 
 test("list complaints - deanInfra sees a complaint once escalated to them, across all departments", async () => {
@@ -353,7 +361,7 @@ test("list complaints - deanInfra sees a complaint once escalated to them, acros
   const { res, body } = await getJson("/api/v1/complaint", deanToken);
 
   assert.equal(res.status, 200);
-  assert.ok(body.data.some((c) => c._id === created.data._id));
+  assert.ok(body.data.some((c: any) => c._id === created.data._id));
 });
 
 test("list complaints - rejects a request with no Authorization header (401)", async () => {

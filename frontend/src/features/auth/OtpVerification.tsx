@@ -1,13 +1,20 @@
 import { useEffect, useState } from 'react';
-import OtpInput from '../../components/common/OtpInput';
+import OtpInput, { type OtpStatus } from '../../components/common/OtpInput';
 import { resendOtp, verifyEmailOtp } from '../../services/authService';
+import { getApiErrorMessage } from '../../types/api';
 
 const OTP_LENGTH = 6;
 const RESEND_COOLDOWN_SECONDS = 30;
 
-function OtpVerification({ email, onVerified, onBack }) {
+interface OtpVerificationProps {
+  email: string;
+  onVerified: () => void;
+  onBack: () => void;
+}
+
+function OtpVerification({ email, onVerified, onBack }: OtpVerificationProps) {
   const [otp, setOtp] = useState('');
-  const [status, setStatus] = useState('idle');
+  const [status, setStatus] = useState<OtpStatus>('idle');
   const [error, setError] = useState('');
   const [verifying, setVerifying] = useState(false);
   const [resending, setResending] = useState(false);
@@ -34,9 +41,9 @@ function OtpVerification({ email, onVerified, onBack }) {
       await verifyEmailOtp({ email, otp });
       setStatus('success');
       setTimeout(() => onVerified(), 500);
-    } catch (err) {
+    } catch (err: unknown) {
       setStatus('error');
-      setError(err.response?.data?.message || 'Invalid OTP. Please try again.');
+      setError(getApiErrorMessage(err, 'Invalid OTP. Please try again.'));
       setTimeout(() => {
         setOtp('');
         setStatus('idle');
@@ -55,8 +62,8 @@ function OtpVerification({ email, onVerified, onBack }) {
       setCooldown(RESEND_COOLDOWN_SECONDS);
       setOtp('');
       setStatus('idle');
-    } catch (err) {
-      setError(err.response?.data?.message || 'Could not resend OTP. Please try again.');
+    } catch (err: unknown) {
+      setError(getApiErrorMessage(err, 'Could not resend OTP. Please try again.'));
     } finally {
       setResending(false);
     }

@@ -1,7 +1,24 @@
 import DetailModal from '../../components/common/DetailModal';
 import { STATUS_META, LEVEL_LABEL, formatDateTime, describeHistoryEntry } from './complaintMeta';
+import type { Complaint } from '../../types/domain';
 
-function ComplaintDetailModal({ complaint, canEscalate, canResolve, onClose, onEscalate, onResolveClick }) {
+interface ComplaintDetailModalProps {
+  complaint: Complaint | null;
+  canEscalate: boolean;
+  canResolve: boolean;
+  onClose: () => void;
+  onEscalate: (id: string) => void;
+  onResolveClick: (complaint: Complaint) => void;
+}
+
+function ComplaintDetailModal({
+  complaint,
+  canEscalate,
+  canResolve,
+  onClose,
+  onEscalate,
+  onResolveClick,
+}: ComplaintDetailModalProps) {
   if (!complaint) return null;
 
   const meta = STATUS_META[complaint.status];
@@ -29,15 +46,17 @@ function ComplaintDetailModal({ complaint, canEscalate, canResolve, onClose, onE
         </div>
         <div>
           <p className="field-label">Lab</p>
-          <p className="detail-value">{complaint.lab?.name || complaint.lab}</p>
+          <p className="detail-value">{complaint.lab?.name}</p>
         </div>
         <div>
           <p className="field-label">Department</p>
-          <p className="detail-value">{complaint.department?.name || complaint.department}</p>
+          <p className="detail-value">{complaint.department?.name}</p>
         </div>
         <div>
           <p className="field-label">Current Level</p>
-          <p className="detail-value">{LEVEL_LABEL[complaint.currentLevel] || complaint.currentLevel}</p>
+          <p className="detail-value">
+            {LEVEL_LABEL[complaint.currentLevel] || complaint.currentLevel}
+          </p>
         </div>
       </div>
 

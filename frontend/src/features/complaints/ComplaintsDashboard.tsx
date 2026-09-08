@@ -11,22 +11,32 @@ import { listComplaints, escalateComplaint, resolveComplaint } from '../../servi
 import { useAuth } from '../../hooks/useAuth';
 import { ROUTES } from '../../constants/routes';
 import { ROLES } from '../../constants/roles';
+import { getApiErrorMessage } from '../../types/api';
+import type { Complaint, UserRole } from '../../types/domain';
 
-function ComplaintsDashboard({ role, subtitle, defaultName }) {
-  const [complaints, setComplaints] = useState([]);
+interface ComplaintsDashboardProps {
+  role: UserRole;
+  subtitle: string;
+  defaultName: string;
+}
+
+type StatusFilter = 'all' | 'open' | 'escalated' | 'resolved';
+
+function ComplaintsDashboard({ role, subtitle, defaultName }: ComplaintsDashboardProps) {
+  const [complaints, setComplaints] = useState<Complaint[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [selectedId, setSelectedId] = useState(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [actionError, setActionError] = useState('');
-  const [resolvingComplaint, setResolvingComplaint] = useState(null);
+  const [resolvingComplaint, setResolvingComplaint] = useState<Complaint | null>(null);
   const [resolveSubmitting, setResolveSubmitting] = useState(false);
   const [resolveError, setResolveError] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const { user, setUser } = useAuth();
   const navigate = useNavigate();
 
-  const effectiveRole = user?.role || role;
+  const effectiveRole: UserRole = user?.role || role;
 
   useEffect(() => {
     let cancelled = false;
@@ -35,8 +45,8 @@ function ComplaintsDashboard({ role, subtitle, defaultName }) {
       .then((res) => {
         if (!cancelled) setComplaints(res.data?.data || []);
       })
-      .catch((err) => {
-        if (!cancelled) setLoadError(err.response?.data?.message || 'Failed to load complaints.');
+      .catch((err: unknown) => {
+        if (!cancelled) setLoadError(getApiErrorMessage(err, 'Failed to load complaints.'));
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
@@ -48,8 +58,10 @@ function ComplaintsDashboard({ role, subtitle, defaultName }) {
 
   const selectedComplaint = complaints.find((c) => c._id === selectedId) || null;
 
-  const canAct = (complaint) => complaint.currentLevel === effectiveRole && complaint.status !== 'Resolved';
-  const canEscalate = (complaint) => canAct(complaint) && effectiveRole !== ROLES.DEAN_INFRA;
+  const canAct = (complaint: Complaint) =>
+    complaint.currentLevel === effectiveRole && complaint.status !== 'Resolved';
+  const canEscalate = (complaint: Complaint) =>
+    canAct(complaint) && effectiveRole !== ROLES.DEAN_INFRA;
   const showDepartmentColumn = effectiveRole === ROLES.DEAN_INFRA;
 
   const stats = useMemo(() => {
@@ -84,26 +96,26 @@ function ComplaintsDashboard({ role, subtitle, defaultName }) {
     return list;
   }, [complaints, statusFilter, searchTerm]);
 
-  const replaceComplaint = (updated) => {
+  const replaceComplaint = (updated: Complaint) => {
     setComplaints((prev) => prev.map((c) => (c._id === updated._id ? updated : c)));
   };
 
-  const handleEscalate = async (id) => {
+  const handleEscalate = async (id: string) => {
     setActionError('');
     try {
       const res = await escalateComplaint(id);
       replaceComplaint(res.data.data);
-    } catch (err) {
-      setActionError(err.response?.data?.message || 'Failed to escalate complaint.');
+    } catch (err: unknown) {
+      setActionError(getApiErrorMessage(err, 'Failed to escalate complaint.'));
     }
   };
 
-  const handleResolveClick = (complaint) => {
+  const handleResolveClick = (complaint: Complaint) => {
     setResolveError('');
     setResolvingComplaint(complaint);
   };
 
-  const handleResolveSubmit = async (id, remarks) => {
+  const handleResolveSubmit = async (id: string, remarks: string) => {
     setResolveSubmitting(true);
     setResolveError('');
     try {
@@ -111,8 +123,8 @@ function ComplaintsDashboard({ role, subtitle, defaultName }) {
       replaceComplaint(res.data.data);
       setResolvingComplaint(null);
       setSelectedId(null);
-    } catch (err) {
-      setResolveError(err.response?.data?.message || 'Failed to resolve complaint.');
+    } catch (err: unknown) {
+      setResolveError(getApiErrorMessage(err, 'Failed to resolve complaint.'));
     } finally {
       setResolveSubmitting(false);
     }
@@ -139,9 +151,7 @@ function ComplaintsDashboard({ role, subtitle, defaultName }) {
         </div>
         <div className="dashboard-header-right">
           <span className="dashboard-user-name">{user?.name || defaultName}</span>
-          <span className="dashboard-dept-badge">
-            {user?.department?.name || 'Department'}
-          </span>
+          <span className="dashboard-dept-badge">{user?.department?.name || 'Department'}</span>
           <button type="button" className="dashboard-logout" onClick={handleLogout}>
             Logout
           </button>
@@ -210,10 +220,7 @@ function ComplaintsDashboard({ role, subtitle, defaultName }) {
         <section className="panel">
           <div className="panel-header">
             <h2 className="panel-title">Recent Complaints</h2>
-            <form
-              className="complaints-search"
-              onSubmit={(e) => e.preventDefault()}
-            >
+            <form className="complaints-search" onSubmit={(e) => e.preventDefault()}>
               <input
                 type="text"
                 className="complaints-search-input"
@@ -249,7 +256,9 @@ function ComplaintsDashboard({ role, subtitle, defaultName }) {
                 {visibleComplaints.length === 0 ? (
                   <tr>
                     <td colSpan={showDepartmentColumn ? 6 : 5} className="panel-state-text">
-                      {complaints.length === 0 ? 'No complaints yet.' : 'No complaints match your filters.'}
+                      {complaints.length === 0
+                        ? 'No complaints yet.'
+                        : 'No complaints match your filters.'}
                     </td>
                   </tr>
                 ) : (

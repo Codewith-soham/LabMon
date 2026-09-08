@@ -7,8 +7,11 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import type { Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import dotenv from "dotenv";
-import mongoose from "mongoose";
+import mongoose, { Types } from "mongoose";
+import type { Role } from "../config/constants.js";
 
 dotenv.config();
 process.env.NODE_ENV = "test";
@@ -20,18 +23,18 @@ const { Pc } = await import("../models/pc.model.js");
 const { ROLES } = await import("../config/constants.js");
 const { generateAccessToken } = await import("../utils/tokenGeneration.js");
 
-let server;
-let baseUrl;
-const cleanupIds = {
+let server: Server;
+let baseUrl: string;
+const cleanupIds: Record<"pc" | "lab" | "dept", Types.ObjectId[]> = {
   pc: [],
   lab: [],
   dept: [],
 };
 
 before(async () => {
-  await mongoose.connect(process.env.MONGO_URL);
+  await mongoose.connect(process.env.MONGO_URL as string);
   server = app.listen(0);
-  const { port } = server.address();
+  const { port } = server.address() as AddressInfo;
   baseUrl = `http://127.0.0.1:${port}`;
 });
 
@@ -47,27 +50,27 @@ after(async () => {
   }
 
   await mongoose.disconnect();
-  await new Promise((resolve) => server.close(resolve));
+  await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
-function randomSuffix() {
+function randomSuffix(): string {
   return crypto.randomBytes(5).toString("hex");
 }
 
-function tokenFor({ role, department }) {
+function tokenFor({ role, department }: { role: Role; department: Types.ObjectId | null }): string {
   return generateAccessToken({ _id: new mongoose.Types.ObjectId(), role, department });
 }
 
-async function fetchHealthCard(pcId, token) {
+async function fetchHealthCard(pcId: string | Types.ObjectId, token?: string) {
   const res = await fetch(`${baseUrl}/api/v1/pc/${pcId}/health-card`, {
     method: "POST",
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
-  const body = await res.json();
+  const body: any = await res.json();
   return { res, body };
 }
 
-async function makePc(overrides = {}) {
+async function makePc(overrides: Record<string, unknown> = {}) {
   const suffix = randomSuffix();
   const dept = await Dept.create({
     name: `Health Card Dept ${suffix}`,

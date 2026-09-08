@@ -5,6 +5,72 @@ One entry per working session / phase. Newest first. (PRD §26 Rule 10, §27.)
 
 ---
 
+## 2026-09-09 — Phase 2: Backend role/status/currentLevel migration
+
+**Owner:** Claude (branch `person-1`)
+**Type:** migration + test — **backend only.** Scope limited to making the backend
+domain model match the Phase 1 frontend contract. No Phase 3/4 work (no `isActive`,
+no lab scope, no `seedAdmin`/`seedLabs`, no no-PC complaints, no new endpoints).
+
+### Role migration (`legacy → new`)
+- `deanInfra` → `admin` (removed `ROLES.DEAN_INFRA`; `admin` takes the top-authority slot).
+- `admin`, `hod`, `labIncharge` unchanged. `ROLES` is now exactly the 3 PRD roles and
+  matches `frontend/src/constants/roles.ts` verbatim.
+
+### Status migration (`legacy → new`)
+- `Open` → `SUBMITTED` · `Escalated_HOD` → `SUBMITTED` · `Escalated_Dean` → `SUBMITTED`
+  · `Resolved` → `RESOLVED`. Full new enum: `SUBMITTED/ASSIGNED/IN_PROGRESS/RESOLVED/CLOSED`.
+- **Escalation is now decoupled from status** (locked D3): escalating changes the owner
+  level and appends history; it no longer mutates `status`. `STATUS_FOR_LEVEL` deleted.
+
+### currentLevel migration (`legacy → new`)
+- `deanInfra` → `hod`. Valid values are now `labIncharge | hod` (derived from `ROLES`).
+- `NEXT_LEVEL` reduced to `labIncharge → hod`; `hod` is the escalation ceiling
+  (escalating past it → `400 "Complaint is already at the highest escalation level"`).
+
+### Done (files changed)
+- `backend/src/config/constants.ts` — `ROLES` (drop `DEAN_INFRA`); `COMPLAINT_STATUS`
+  → 5-state lifecycle; `NEXT_LEVEL` → `{ labIncharge: hod }`; added `TERMINAL_STATUSES`
+  (`RESOLVED`,`CLOSED`); removed `STATUS_FOR_LEVEL`.
+- `backend/src/models/complaint.model.ts` — `status` default `SUBMITTED`; enums track
+  the constants automatically.
+- `backend/src/services/complaint.service.ts` — create → `SUBMITTED`; escalate no longer
+  sets status; escalate/resolve guards use `TERMINAL_STATUSES` (reject `RESOLVED` **and**
+  `CLOSED`).
+- `backend/src/utils/scope.ts` — `isDeptUnscoped` = admin only; `buildComplaintScope`
+  drops the `deanInfra` branch (admin `{}`, hod `{department, currentLevel: hod}`,
+  labIncharge `{department}`).
+- `backend/src/routes/complaint.route.ts` — `resolve` roleCheck drops `DEAN_INFRA`.
+- `backend/src/routes/pc.route.ts` — `search` / `health-card` roleChecks drop `DEAN_INFRA`.
+- `backend/src/types/auth.ts` — comment.
+- `backend/src/tests/complaint.test.ts`, `pc.search.test.ts`, `healthcard.test.ts` —
+  updated assertions to the new model; removed `deanInfra`/`Escalated_*` cases; added
+  model-level negative tests (role/status/currentLevel enum rejection) + an API-value
+  assertion test.
+- `backend/src/scripts/migrateRolesAndStatuses.ts` — **new**, idempotent, `--dry-run`
+  supported; `npm run migrate:roles-statuses`. Maps the values above.
+
+### Database migration
+- Script **created, NOT executed.** `MONGO_URL` points at a shared Atlas cluster; per
+  PRD (no destructive ops against a shared/production DB) it was not run in this
+  environment. Run `npm run migrate:roles-statuses -- --dry-run` against a backup copy
+  first, then without the flag to apply.
+
+### Legacy references
+- No active backend references to `deanInfra` / legacy statuses remain. Remaining
+  mentions are intentional: the migration script's mapping, and negative tests that
+  assert the schema now rejects those values.
+
+### Testing
+- Backend: `npm run typecheck` ✅ · Prettier `--check` ✅ · `npm run build` ✅ ·
+  `npm test` ✅ **59/59** (was 57; +4 new, −2 removed deanInfra cases).
+- Frontend: not touched this phase.
+
+### Next
+- Phase 3 — Auth + RBAC (`isActive`, `tokenVersion`, lab scope, admin route protection).
+
+---
+
 ## 2026-09-09 — Phase 1: Foundation
 
 **Owner:** Claude

@@ -163,16 +163,6 @@ test("health card - admin can fetch a pc from any department", async () => {
   assert.equal(body.data.deadStockNo, pc.deadStockNo);
 });
 
-test("health card - deanInfra can fetch a pc from any department", async () => {
-  const { pc } = await makePc();
-  const token = tokenFor({ role: ROLES.DEAN_INFRA, department: null });
-
-  const { res, body } = await fetchHealthCard(pc._id, token);
-
-  assert.equal(res.status, 200);
-  assert.equal(body.success, true);
-});
-
 test("health card - returns 404 for an unknown pc id", async () => {
   await makePc();
   const token = tokenFor({ role: ROLES.ADMIN, department: null });

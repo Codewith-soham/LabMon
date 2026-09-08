@@ -1,7 +1,9 @@
 # ROLES_AND_PERMISSIONS.md
 
 **Status:** as-built (2026-09-08) + PRD target. Update on any authz change (PRD §27).
-**2026-09-09 (Phase 1):** D1–D4 are **locked**. Final roles: `ADMIN`, `HOD`, `LAB_INCHARGE` (no `deanInfra`). Final statuses: `SUBMITTED`, `ASSIGNED`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`. Escalation chain tops out at HOD. The **frontend** constants/types/routes now reflect this; the **backend** enums, `complaint.model`, `complaint.service` and `scope.ts` still carry the legacy set and are migrated in Phase 2 (see `DEVELOPMENT_LOG.md`).
+**2026-09-09 (Phase 1):** D1–D4 are **locked**. Final roles: `ADMIN`, `HOD`, `LAB_INCHARGE` (no `deanInfra`). Final statuses: `SUBMITTED`, `ASSIGNED`, `IN_PROGRESS`, `RESOLVED`, `CLOSED`. Escalation chain tops out at HOD.
+
+**2026-09-09 (Phase 2):** Backend cut over to the locked model. `backend/src/config/constants.ts` (`ROLES`, `COMPLAINT_STATUS`, `NEXT_LEVEL`), `complaint.model.ts`, `complaint.service.ts`, `scope.ts` and the complaint/pc routes now use the 3-role / 5-status / `labIncharge|hod` set, matching the frontend. Escalation is decoupled from `status` (escalate = owner-level change + history only). `currentLevel` is `labIncharge | hod`; `hod` is the escalation ceiling. Data migration script `backend/src/scripts/migrateRolesAndStatuses.ts` created but **not executed** (no safe DB target in this environment). Sections 1 & 4–5 below still describe the pre-Phase-2 *as-built* state for history; §3 is the current target/behaviour.
 
 ---
 

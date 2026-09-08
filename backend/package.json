@@ -12,6 +12,7 @@
     "test": "node --import tsx --test \"src/tests/**/*.test.ts\"",
     "seed": "tsx src/scripts/seed.ts",
     "seed:departments": "tsx src/scripts/seedDepartments.ts",
+    "migrate:roles-statuses": "tsx src/scripts/migrateRolesAndStatuses.ts",
     "atlas:allow": "node scripts/atlas-allowlist.mjs"
   },
   "author": "Soham Ghadge",

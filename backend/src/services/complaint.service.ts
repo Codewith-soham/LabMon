@@ -10,7 +10,7 @@ import { Pc } from "../models/pc.model.js";
 import "../models/lab.model.js";
 import "../models/department.model.js";
 import { ApiError } from "../utils/ApiError.js";
-import { ROLES, COMPLAINT_STATUS, NEXT_LEVEL, STATUS_FOR_LEVEL } from "../config/constants.js";
+import { ROLES, COMPLAINT_STATUS, NEXT_LEVEL, TERMINAL_STATUSES } from "../config/constants.js";
 import { assertDepartmentAccess, buildComplaintScope } from "../utils/scope.js";
 import type { AuthTokenPayload } from "../types/auth.js";
 
@@ -43,7 +43,7 @@ const createComplaint = async ({
     lab: pc.lab,
     description,
     raisedBy,
-    status: COMPLAINT_STATUS.OPEN,
+    status: COMPLAINT_STATUS.SUBMITTED,
     currentLevel: ROLES.LAB_INCHARGE,
     history: [
       {
@@ -68,8 +68,8 @@ const escalateComplaint = async (
     throw new ApiError(404, "Complaint not found");
   }
 
-  if (complaint.status === COMPLAINT_STATUS.RESOLVED) {
-    throw new ApiError(400, "Cannot escalate a resolved complaint");
+  if (TERMINAL_STATUSES.includes(complaint.status)) {
+    throw new ApiError(400, "Cannot escalate a resolved or closed complaint");
   }
 
   assertDepartmentAccess(
@@ -85,22 +85,13 @@ const escalateComplaint = async (
   const nextLevel = NEXT_LEVEL[complaint.currentLevel];
 
   if (!nextLevel) {
+    // labIncharge -> hod is the only hop; a complaint already at hod has nowhere to go.
     throw new ApiError(400, "Complaint is already at the highest escalation level");
   }
 
-  const nextStatus = STATUS_FOR_LEVEL[nextLevel];
-
-  if (!nextStatus) {
-    // Unreachable with the current chain (hod/deanInfra both have a status),
-    // but keeps the assignment total instead of writing `undefined`.
-    throw new ApiError(400, "No status mapping for the next escalation level");
-  }
-
+  // Escalation moves ownership to the next level; `status` is part of a separate
+  // lifecycle (SUBMITTED -> ... -> RESOLVED) and is deliberately left untouched here.
   complaint.currentLevel = nextLevel;
-  complaint.status = nextStatus;
-  // if currentLevel is "labIncharge", nextRole becomes "hod"
-  // if currentLevel is "hod", nextRole becomes "deanInfra"
-  // if currentLevel is "deanInfra", nextRole is undefined (no next level — end of chain)
 
   complaint.history.push({
     level: nextLevel,
@@ -130,7 +121,7 @@ const resolveComplaint = async (
     throw new ApiError(404, "Complaint not found");
   }
 
-  if (complaint.status === COMPLAINT_STATUS.RESOLVED) {
+  if (TERMINAL_STATUSES.includes(complaint.status)) {
     throw new ApiError(400, "Complaint is already resolved");
   }
 

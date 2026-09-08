@@ -86,12 +86,13 @@ const complaintSchema = new mongoose.Schema<IComplaint, ComplaintModel>(
     status: {
       type: String,
       enum: Object.values(COMPLAINT_STATUS),
-      default: COMPLAINT_STATUS.OPEN,
+      default: COMPLAINT_STATUS.SUBMITTED,
     },
 
     currentLevel: {
       type: String,
-      enum: Object.values(ROLES).filter((r) => r !== ROLES.ADMIN), // ADMIN CANNOT SEE THE CURRENT LEVEL
+      // Only labIncharge/hod own a complaint; admin monitors but is never a level.
+      enum: Object.values(ROLES).filter((r) => r !== ROLES.ADMIN),
       default: ROLES.LAB_INCHARGE,
     },
 

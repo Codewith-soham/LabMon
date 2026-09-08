@@ -1,9 +1,9 @@
 // Integration tests for GET /api/v1/pc/search. Runs the real Express app
 // in-process against MONGO_URL from .env. Seeds two departments (each with
 // one lab and a couple of PCs) plus one user per role (labIncharge/hod in
-// dept A, labIncharge in dept B, deanInfra with no department, admin with no
-// department) and logs each in through the real OTP flow, mirroring the
-// pattern in auth.test.js. All seeded data is deleted again in `after`.
+// dept A, labIncharge in dept B, admin with no department) and logs each in
+// through the real OTP flow, mirroring the pattern in auth.test.js. All
+// seeded data is deleted again in `after`.
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -35,7 +35,7 @@ const createdLabIds: Types.ObjectId[] = [];
 const createdPcIds: Types.ObjectId[] = [];
 
 // per-role access tokens, populated in `before`
-const tokens = {} as Record<"labIncharge" | "hod" | "labInchargeB" | "deanInfra" | "admin", string>;
+const tokens = {} as Record<"labIncharge" | "hod" | "labInchargeB" | "admin", string>;
 
 // seeded PCs, populated in `before`
 const pcs = {} as Record<"pcA1" | "pcA2" | "pcB1", PcDocument>;
@@ -110,7 +110,6 @@ before(async () => {
     role: ROLES.LAB_INCHARGE,
     department: deptB.name,
   });
-  tokens.deanInfra = await registerLoginAndGetToken({ role: ROLES.DEAN_INFRA });
   tokens.admin = await registerLoginAndGetToken({ role: ROLES.ADMIN });
 });
 
@@ -235,15 +234,6 @@ test("search - hod with no filters sees only PCs in their own department", async
   assert.ok(!ids.includes(String(pcs.pcB1._id)));
 });
 
-test("search - deanInfra with no filters sees PCs across all departments", async () => {
-  const { res, body } = await getJson("/api/v1/pc/search", { token: tokens.deanInfra });
-
-  assert.equal(res.status, 200);
-  const ids = body.data.map((pc: any) => pc._id);
-  assert.ok(ids.includes(String(pcs.pcA1._id)));
-  assert.ok(ids.includes(String(pcs.pcB1._id)));
-});
-
 test("search - cpu filter matches partially and case-insensitively, within department scope", async () => {
   const { res, body } = await getJson("/api/v1/pc/search?cpu=intel", { token: tokens.labIncharge });
 
@@ -253,16 +243,16 @@ test("search - cpu filter matches partially and case-insensitively, within depar
   assert.ok(!ids.includes(String(pcs.pcA2._id))); // AMD, filtered out
 });
 
-test("search - software filter matches an element of the software array", async () => {
+test("search - software filter matches an element of the software array, within department scope", async () => {
   const { res, body } = await getJson("/api/v1/pc/search?software=chrome", {
-    token: tokens.deanInfra,
+    token: tokens.labIncharge,
   });
 
   assert.equal(res.status, 200);
   const ids = body.data.map((pc: any) => pc._id);
   assert.ok(ids.includes(String(pcs.pcA1._id)));
-  assert.ok(ids.includes(String(pcs.pcB1._id)));
   assert.ok(!ids.includes(String(pcs.pcA2._id))); // only has Firefox
+  assert.ok(!ids.includes(String(pcs.pcB1._id))); // other department, out of scope
 });
 
 test("search - warrantyStatus filter matches exactly", async () => {

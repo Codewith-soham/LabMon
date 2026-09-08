@@ -15,17 +15,11 @@ router.post("/sync", pcSyncLimiter, validate(syncPcSchema), syncPc);
 // Public — lets the unauthenticated raise-complaint form confirm a dead stock number
 // is real and show its department/lab before submitting.
 router.get("/lookup/:deadStockNo", lookupPc);
-router.get(
-  "/search",
-  auth,
-  roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD, ROLES.DEAN_INFRA),
-  deptScope,
-  searchPc,
-);
+router.get("/search", auth, roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD), deptScope, searchPc);
 router.post(
   "/:id/health-card",
   auth,
-  roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD, ROLES.DEAN_INFRA, ROLES.ADMIN),
+  roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD, ROLES.ADMIN),
   validate(objectIdParamSchema, "params"),
   deptScope,
   PcHealthCard,

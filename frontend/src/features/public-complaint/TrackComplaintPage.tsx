@@ -12,14 +12,14 @@ import type { ComplaintLevel, ComplaintStatus, TrackedComplaint } from '../../ty
 const LEVEL_LABELS: Record<ComplaintLevel, string> = {
   [ROLES.LAB_INCHARGE]: 'Lab Incharge',
   [ROLES.HOD]: 'HOD',
-  [ROLES.DEAN_INFRA]: 'Dean Infra',
 };
 
 const STATUS_LABELS: Record<ComplaintStatus, string> = {
-  [COMPLAINT_STATUS.OPEN]: 'Open',
-  [COMPLAINT_STATUS.ESCALATED_HOD]: 'Escalated to HOD',
-  [COMPLAINT_STATUS.ESCALATED_DEAN]: 'Escalated to Dean Infra',
+  [COMPLAINT_STATUS.SUBMITTED]: 'Submitted',
+  [COMPLAINT_STATUS.ASSIGNED]: 'Assigned',
+  [COMPLAINT_STATUS.IN_PROGRESS]: 'In Progress',
   [COMPLAINT_STATUS.RESOLVED]: 'Resolved',
+  [COMPLAINT_STATUS.CLOSED]: 'Closed',
 };
 
 function TrackComplaintPage() {

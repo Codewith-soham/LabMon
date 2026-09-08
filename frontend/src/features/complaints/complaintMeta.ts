@@ -2,25 +2,27 @@ import type { ComplaintHistoryEntry, ComplaintStatus } from '../../types/domain'
 
 interface StatusMeta {
   label: string;
+  // Visual bucket only. 'escalated' is reused for the in-flight states to keep the
+  // existing status-pill CSS; Phase 2 can rename the modifiers alongside the styles.
   modifier: 'open' | 'escalated' | 'resolved';
 }
 
 export const STATUS_META: Record<ComplaintStatus, StatusMeta> = {
-  Open: { label: 'Open', modifier: 'open' },
-  Escalated_HOD: { label: 'Escalated · HOD', modifier: 'escalated' },
-  Escalated_Dean: { label: 'Escalated · Dean Infra', modifier: 'escalated' },
-  Resolved: { label: 'Resolved', modifier: 'resolved' },
+  SUBMITTED: { label: 'Submitted', modifier: 'open' },
+  ASSIGNED: { label: 'Assigned', modifier: 'escalated' },
+  IN_PROGRESS: { label: 'In Progress', modifier: 'escalated' },
+  RESOLVED: { label: 'Resolved', modifier: 'resolved' },
+  CLOSED: { label: 'Closed', modifier: 'resolved' },
 };
 
 // Derived from STATUS_META so dashboard filtering/stats never drift from the status enum.
-export const ESCALATED_STATUSES: ComplaintStatus[] = (
+export const IN_PROGRESS_STATUSES: ComplaintStatus[] = (
   Object.keys(STATUS_META) as ComplaintStatus[]
 ).filter((status) => STATUS_META[status].modifier === 'escalated');
 
 export const LEVEL_LABEL: Record<string, string> = {
   labIncharge: 'Lab Incharge',
   hod: 'HOD',
-  deanInfra: 'Dean Infra',
 };
 
 const ACTION_LABEL: Record<string, string> = {

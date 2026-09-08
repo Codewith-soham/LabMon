@@ -5,12 +5,12 @@ import '../auth/AuthPage.css';
 import Donut from './Donut';
 import ComplaintDetailModal from './ComplaintDetailModal';
 import ResolveComplaintModal from './ResolveComplaintModal';
-import { STATUS_META, ESCALATED_STATUSES, formatDateTime } from './complaintMeta';
+import { STATUS_META, IN_PROGRESS_STATUSES, formatDateTime } from './complaintMeta';
 import { logout } from '../../services/authService';
 import { listComplaints, escalateComplaint, resolveComplaint } from '../../services/complaintService';
 import { useAuth } from '../../hooks/useAuth';
 import { ROUTES } from '../../constants/routes';
-import { ROLES } from '../../constants/roles';
+import { ROLES, COMPLAINT_STATUS, NEXT_LEVEL } from '../../constants/roles';
 import { getApiErrorMessage } from '../../types/api';
 import type { Complaint, UserRole } from '../../types/domain';
 
@@ -20,7 +20,9 @@ interface ComplaintsDashboardProps {
   defaultName: string;
 }
 
-type StatusFilter = 'all' | 'open' | 'escalated' | 'resolved';
+type StatusFilter = 'all' | 'open' | 'inProgress' | 'resolved';
+
+const RESOLVED_STATUSES: string[] = [COMPLAINT_STATUS.RESOLVED, COMPLAINT_STATUS.CLOSED];
 
 function ComplaintsDashboard({ role, subtitle, defaultName }: ComplaintsDashboardProps) {
   const [complaints, setComplaints] = useState<Complaint[]>([]);
@@ -59,28 +61,28 @@ function ComplaintsDashboard({ role, subtitle, defaultName }: ComplaintsDashboar
   const selectedComplaint = complaints.find((c) => c._id === selectedId) || null;
 
   const canAct = (complaint: Complaint) =>
-    complaint.currentLevel === effectiveRole && complaint.status !== 'Resolved';
+    complaint.currentLevel === effectiveRole && !RESOLVED_STATUSES.includes(complaint.status);
   const canEscalate = (complaint: Complaint) =>
-    canAct(complaint) && effectiveRole !== ROLES.DEAN_INFRA;
-  const showDepartmentColumn = effectiveRole === ROLES.DEAN_INFRA;
+    canAct(complaint) && Boolean(NEXT_LEVEL[effectiveRole]);
+  const showDepartmentColumn = effectiveRole === ROLES.ADMIN;
 
   const stats = useMemo(() => {
     const total = complaints.length;
-    const open = complaints.filter((c) => c.status === 'Open').length;
-    const escalated = complaints.filter((c) => ESCALATED_STATUSES.includes(c.status)).length;
-    const resolved = complaints.filter((c) => c.status === 'Resolved').length;
-    return { total, open, escalated, resolved };
+    const open = complaints.filter((c) => c.status === COMPLAINT_STATUS.SUBMITTED).length;
+    const inProgress = complaints.filter((c) => IN_PROGRESS_STATUSES.includes(c.status)).length;
+    const resolved = complaints.filter((c) => RESOLVED_STATUSES.includes(c.status)).length;
+    return { total, open, inProgress, resolved };
   }, [complaints]);
 
   const visibleComplaints = useMemo(() => {
     let list = complaints;
 
     if (statusFilter === 'open') {
-      list = list.filter((c) => c.status === 'Open');
-    } else if (statusFilter === 'escalated') {
-      list = list.filter((c) => ESCALATED_STATUSES.includes(c.status));
+      list = list.filter((c) => c.status === COMPLAINT_STATUS.SUBMITTED);
+    } else if (statusFilter === 'inProgress') {
+      list = list.filter((c) => IN_PROGRESS_STATUSES.includes(c.status));
     } else if (statusFilter === 'resolved') {
-      list = list.filter((c) => c.status === 'Resolved');
+      list = list.filter((c) => RESOLVED_STATUSES.includes(c.status));
     }
 
     const term = searchTerm.trim().toLowerCase();
@@ -192,15 +194,15 @@ function ComplaintsDashboard({ role, subtitle, defaultName }: ComplaintsDashboar
 
           <button
             type="button"
-            className={`stat-card stat-card--filterable ${statusFilter === 'escalated' ? 'stat-card--active' : ''}`}
-            onClick={() => setStatusFilter('escalated')}
+            className={`stat-card stat-card--filterable ${statusFilter === 'inProgress' ? 'stat-card--active' : ''}`}
+            onClick={() => setStatusFilter('inProgress')}
           >
             <div>
-              <p className="stat-card-label">Escalated</p>
-              <p className="stat-card-value">{stats.escalated}</p>
+              <p className="stat-card-label">In Progress</p>
+              <p className="stat-card-value">{stats.inProgress}</p>
               <p className="stat-card-sub">of {stats.total} total</p>
             </div>
-            <Donut value={stats.escalated} total={stats.total} colorClass="donut-value--blue" />
+            <Donut value={stats.inProgress} total={stats.total} colorClass="donut-value--blue" />
           </button>
 
           <button

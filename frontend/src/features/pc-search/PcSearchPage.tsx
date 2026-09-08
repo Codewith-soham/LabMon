@@ -13,9 +13,9 @@ import { getApiErrorMessage } from '../../types/api';
 import type { Pc, UserRole } from '../../types/domain';
 
 const HOME_ROUTE_BY_ROLE: Partial<Record<UserRole, RoutePath>> = {
-  [ROLES.LAB_INCHARGE]: ROUTES.LAB_INCHARGE_HOME,
-  [ROLES.HOD]: ROUTES.HOD_HOME,
-  [ROLES.DEAN_INFRA]: ROUTES.DEAN_INFRA_HOME,
+  [ROLES.ADMIN]: ROUTES.ADMIN_DASHBOARD,
+  [ROLES.LAB_INCHARGE]: ROUTES.LAB_INCHARGE_DASHBOARD,
+  [ROLES.HOD]: ROUTES.HOD_DASHBOARD,
 };
 
 interface PcFilters {

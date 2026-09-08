@@ -26,13 +26,12 @@ interface AuthForm {
 const SIGNUP_ROLES: ReadonlyArray<{ value: UserRole; label: string }> = [
   { value: ROLES.LAB_INCHARGE, label: 'Lab Incharge' },
   { value: ROLES.HOD, label: 'HOD' },
-  { value: ROLES.DEAN_INFRA, label: 'Dean Infra' },
 ];
 
 const HOME_ROUTE_BY_ROLE: Partial<Record<UserRole, RoutePath>> = {
-  [ROLES.LAB_INCHARGE]: ROUTES.LAB_INCHARGE_HOME,
-  [ROLES.HOD]: ROUTES.HOD_HOME,
-  [ROLES.DEAN_INFRA]: ROUTES.DEAN_INFRA_HOME,
+  [ROLES.ADMIN]: ROUTES.ADMIN_DASHBOARD,
+  [ROLES.LAB_INCHARGE]: ROUTES.LAB_INCHARGE_DASHBOARD,
+  [ROLES.HOD]: ROUTES.HOD_DASHBOARD,
 };
 
 const INITIAL_FORM: AuthForm = {
@@ -56,7 +55,7 @@ function AuthPage() {
   const { setUser } = useAuth();
 
   const isSignup = activeTab === 'signup';
-  const departmentRequired = form.role !== ROLES.DEAN_INFRA;
+  const departmentRequired = form.role !== ROLES.ADMIN;
 
   useEffect(() => {
     if (activeTab !== 'signup') return;

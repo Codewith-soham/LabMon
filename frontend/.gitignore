@@ -13,6 +13,11 @@ dist-ssr
 coverage
 *.local
 
+# Env files (keep .env.example tracked)
+.env
+.env.*
+!.env.example
+
 # Vite
 .vite/
 *.timestamp-*

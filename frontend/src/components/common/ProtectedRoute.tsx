@@ -20,8 +20,9 @@ function ProtectedRoute({ allowedRoles, children }: ProtectedRouteProps): ReactN
     return <Navigate to={ROUTES.LOGIN} replace />;
   }
 
+  // Authenticated but wrong role: show a real 403, don't bounce to the login page.
   if (allowedRoles && !allowedRoles.includes(user.role)) {
-    return <Navigate to={ROUTES.LOGIN} replace />;
+    return <Navigate to={ROUTES.FORBIDDEN} replace />;
   }
 
   return children;

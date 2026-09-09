@@ -5,6 +5,62 @@ One entry per working session / phase. Newest first. (PRD §26 Rule 10, §27.)
 
 ---
 
+## 2026-09-09 — Phase 2 (cont.): execute + verify the data migration
+
+**Owner:** Claude (branch `person-1`)
+**Type:** migration — data only. No business-logic changes. No Phase 3/4 work.
+
+### What ran
+- `MONGO_URL` in `backend/.env` points at a **shared Atlas cluster**
+  (`cluster0.k5lgkyi.mongodb.net`) — not touched. No local mongod/docker/mongosh
+  available, so a private throwaway MongoDB was stood up with
+  `mongodb-memory-server` (v10, installed only in the scratchpad — **no change to
+  `backend/package.json`**), seeded with representative legacy + already-correct +
+  unrelated data, and the migration run against that.
+- `npm run migrate:roles-statuses -- --dry-run` → `npm run migrate:roles-statuses`
+  → dry-run again (idempotency) → second apply (idempotency). Full before/after
+  collection snapshots diffed field-by-field.
+
+### Migration script fixes (`backend/src/scripts/migrateRolesAndStatuses.ts`)
+- **Bug:** `dotenv.config()` ran *after* the model imports, which transitively
+  evaluate `src/config/env.ts` (validates `JWT_*` at import time) — the script
+  crashed before connecting unless the shell already exported every var. Fixed by
+  switching to `import "dotenv/config";` as the first import, matching `server.ts`.
+- Added a consolidated end-of-run SUMMARY block (Users migrated / Complaints
+  migrated / Current levels migrated / Already-correct records / Errors), an
+  `errors` counter with try/catch around the steps, and a WARNING line for values
+  that are neither legacy-mapped nor valid V1. Mapping and write behaviour
+  unchanged. `prettier --check`, `typecheck`, `build` all green.
+
+### Results (against the safe copy: 5 users, 6 complaints, 1 dept, 1 lab)
+- Users migrated: 2 (`deanInfra` → `admin`). Complaints migrated: 4 legacy
+  statuses → `SUBMITTED`/`RESOLVED`. Current levels migrated: 1 (`deanInfra` →
+  `hod`). History arrays rewritten: 2 (`history[].level` `deanInfra` → `hod`).
+  Errors: 0.
+- Post-migration: 0 `deanInfra` roles, 0 legacy statuses, 0 legacy `currentLevel`,
+  0 legacy `history.level`. Second dry-run + second apply: 0 changes (idempotent).
+- Integrity: field-level before/after diff shows **only** `role` / `status` /
+  `currentLevel` / `history[].level` changed. No docs added/deleted, `createdAt` /
+  `updatedAt` / `history` `by`/`at`/`note`/`action` / depts / labs all untouched.
+- Backend: `typecheck` ✅ · `prettier --check` ✅ · `build` ✅ · `npm test` ✅ 59/59
+  (run against a separate MMS db, not Atlas).
+- Live smoke: backend booted against the migrated db; admin / hod / labIncharge
+  all log in with the correct role claim; a migrated ex-`deanInfra` user now
+  authenticates as `admin`; `GET /complaint` returns only V1 `status`
+  (`SUBMITTED`/`RESOLVED`) and `currentLevel` (`labIncharge`/`hod`) values — every
+  one has a `frontend/.../complaintMeta.ts` `STATUS_META` / `LEVEL_LABEL` entry, so
+  no meta mismatch; unauthenticated `GET /complaint` → 401.
+
+### Still open (unchanged, Phase 3+)
+- The migration has **not** been run against the shared Atlas database — that
+  requires a maintainer with a safe target (backup/restore copy or a maintenance
+  window) to run `npm run migrate:roles-statuses -- --dry-run` then without the
+  flag, against that copy.
+- Seeds: no `seedAdmin.ts` yet (Phase 3). Current seeds (`seed.ts`,
+  `seedDepartments.ts`) create no `User` docs, so none can create `deanInfra`.
+
+---
+
 ## 2026-09-09 — Phase 2: Backend role/status/currentLevel migration
 
 **Owner:** Claude (branch `person-1`)

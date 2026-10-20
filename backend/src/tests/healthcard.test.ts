@@ -21,7 +21,7 @@ const { Dept } = await import("../models/department.model.js");
 const { Lab } = await import("../models/lab.model.js");
 const { Pc } = await import("../models/pc.model.js");
 const { ROLES } = await import("../config/constants.js");
-const { generateAccessToken } = await import("../utils/tokenGeneration.js");
+const { createUserToken, cleanupTestUsers } = await import("./helpers.js");
 
 let server: Server;
 let baseUrl: string;
@@ -39,6 +39,7 @@ before(async () => {
 });
 
 after(async () => {
+  await cleanupTestUsers();
   if (cleanupIds.pc.length) {
     await Pc.deleteMany({ _id: { $in: cleanupIds.pc } });
   }
@@ -57,8 +58,15 @@ function randomSuffix(): string {
   return crypto.randomBytes(5).toString("hex");
 }
 
-function tokenFor({ role, department }: { role: Role; department: Types.ObjectId | null }): string {
-  return generateAccessToken({ _id: new mongoose.Types.ObjectId(), role, department });
+async function tokenFor({
+  role,
+  department,
+}: {
+  role: Role;
+  department: Types.ObjectId | null;
+}): Promise<string> {
+  const { token } = await createUserToken({ role, department });
+  return token;
 }
 
 async function fetchHealthCard(pcId: string | Types.ObjectId, token?: string) {
@@ -122,7 +130,7 @@ test("health card - rejects an invalid/garbage token (401)", async () => {
 
 test("health card - returns the pc for a lab incharge scoped to the same department", async () => {
   const { pc, dept } = await makePc();
-  const token = tokenFor({ role: ROLES.LAB_INCHARGE, department: dept._id });
+  const token = await tokenFor({ role: ROLES.LAB_INCHARGE, department: dept._id });
 
   const { res, body } = await fetchHealthCard(pc._id, token);
 
@@ -143,7 +151,7 @@ test("health card - returns 404 for a lab incharge in a different department", a
   });
   cleanupIds.dept.push(otherDept._id);
 
-  const token = tokenFor({ role: ROLES.LAB_INCHARGE, department: otherDept._id });
+  const token = await tokenFor({ role: ROLES.LAB_INCHARGE, department: otherDept._id });
 
   const { res, body } = await fetchHealthCard(pc._id, token);
 
@@ -154,7 +162,7 @@ test("health card - returns 404 for a lab incharge in a different department", a
 
 test("health card - admin can fetch a pc from any department", async () => {
   const { pc } = await makePc();
-  const token = tokenFor({ role: ROLES.ADMIN, department: null });
+  const token = await tokenFor({ role: ROLES.ADMIN, department: null });
 
   const { res, body } = await fetchHealthCard(pc._id, token);
 
@@ -165,7 +173,7 @@ test("health card - admin can fetch a pc from any department", async () => {
 
 test("health card - returns 404 for an unknown pc id", async () => {
   await makePc();
-  const token = tokenFor({ role: ROLES.ADMIN, department: null });
+  const token = await tokenFor({ role: ROLES.ADMIN, department: null });
   const unknownId = new mongoose.Types.ObjectId();
 
   const { res, body } = await fetchHealthCard(unknownId, token);

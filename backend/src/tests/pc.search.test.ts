@@ -23,8 +23,8 @@ const { User } = await import("../models/user.model.js");
 const { Dept } = await import("../models/department.model.js");
 const { Lab } = await import("../models/lab.model.js");
 const { Pc } = await import("../models/pc.model.js");
-const { ROLES, OTP_PURPOSE } = await import("../config/constants.js");
-const { otpEvents } = await import("../utils/mailer.js");
+const { ROLES } = await import("../config/constants.js");
+const { createUserToken, cleanupTestUsers } = await import("./helpers.js");
 
 let server: Server;
 let baseUrl: string;
@@ -101,19 +101,18 @@ before(async () => {
   Object.assign(pcs, { pcA1, pcA2, pcB1 });
 
   // --- users, one per role we need tokens for ---
-  tokens.labIncharge = await registerLoginAndGetToken({
-    role: ROLES.LAB_INCHARGE,
-    department: deptA.name,
-  });
-  tokens.hod = await registerLoginAndGetToken({ role: ROLES.HOD, department: deptA.name });
-  tokens.labInchargeB = await registerLoginAndGetToken({
-    role: ROLES.LAB_INCHARGE,
-    department: deptB.name,
-  });
-  tokens.admin = await registerLoginAndGetToken({ role: ROLES.ADMIN });
+  tokens.labIncharge = (
+    await createUserToken({ role: ROLES.LAB_INCHARGE, department: deptA._id, lab: labA._id })
+  ).token;
+  tokens.hod = (await createUserToken({ role: ROLES.HOD, department: deptA._id })).token;
+  tokens.labInchargeB = (
+    await createUserToken({ role: ROLES.LAB_INCHARGE, department: deptB._id, lab: labB._id })
+  ).token;
+  tokens.admin = (await createUserToken({ role: ROLES.ADMIN })).token;
 });
 
 after(async () => {
+  await cleanupTestUsers();
   if (createdPcIds.length) await Pc.deleteMany({ _id: { $in: createdPcIds } });
   if (createdLabIds.length) await Lab.deleteMany({ _id: { $in: createdLabIds } });
   if (createdDeptIds.length) await Dept.deleteMany({ _id: { $in: createdDeptIds } });
@@ -122,82 +121,12 @@ after(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
-function randomUser(overrides: Record<string, unknown> = {}) {
-  const id = crypto.randomBytes(6).toString("hex");
-  return {
-    name: `Test User ${id}`,
-    email: `test.${id}@labmon.test`,
-    password: `Pw_${crypto.randomBytes(8).toString("hex")}`,
-    role: ROLES.LAB_INCHARGE,
-    ...overrides,
-  };
-}
-
-async function postJson(path: string, payload: unknown, extraHeaders: Record<string, string> = {}) {
-  const res = await fetch(`${baseUrl}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...extraHeaders },
-    body: JSON.stringify(payload),
-  });
-  const body: any = await res.json();
-  return { res, body };
-}
-
 async function getJson(path: string, { token }: { token?: string } = {}) {
   const res = await fetch(`${baseUrl}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   const body: any = await res.json();
   return { res, body };
-}
-
-function extractCookie(setCookieHeaders: string[], name: string): string | undefined {
-  const match = setCookieHeaders.find((c) => c.startsWith(`${name}=`));
-  return match ? match.split(";")[0]?.slice(name.length + 1) : undefined;
-}
-
-function waitForOtp(email: string, purpose: string): Promise<string> {
-  return new Promise((resolve) => {
-    const handler = (payload: OtpEmailEvent) => {
-      if (payload.to === email && payload.purpose === purpose) {
-        otpEvents.off("otp", handler);
-        resolve(payload.otp);
-      }
-    };
-    otpEvents.on("otp", handler);
-  });
-}
-
-// registers, verifies email, logs in, and returns the resulting access token
-// as a plain string (ready for an Authorization header, same as the
-// accessToken cookie used in auth.test.js's logout test)
-async function registerLoginAndGetToken(overrides: Record<string, unknown> = {}): Promise<string> {
-  const payload = randomUser(overrides);
-
-  const emailOtpPromise = waitForOtp(payload.email, OTP_PURPOSE.EMAIL_VERIFICATION);
-  const { res: registerRes, body: registerBody } = await postJson("/api/v1/auth/register", payload);
-  assert.equal(
-    registerRes.status,
-    201,
-    `setup: register failed for ${payload.email}: ${JSON.stringify(registerBody)}`,
-  );
-  createdUserIds.push(registerBody.data._id);
-  const emailOtp = await emailOtpPromise;
-  await postJson("/api/v1/auth/verify-email", { email: payload.email, otp: emailOtp });
-
-  const { res, body } = await postJson("/api/v1/auth/login", {
-    email: payload.email,
-    password: payload.password,
-  });
-  assert.equal(
-    res.status,
-    200,
-    `setup: login failed for ${payload.email}: ${JSON.stringify(body)}`,
-  );
-
-  const token = extractCookie(res.headers.getSetCookie(), "accessToken");
-  assert.ok(token, "setup: expected an accessToken cookie after login");
-  return token;
 }
 
 test("search - rejects a request with no Authorization header (401)", async () => {

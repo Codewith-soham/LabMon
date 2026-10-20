@@ -20,12 +20,20 @@ process.env.NODE_ENV = "test";
 
 const { app } = await import("../app.js");
 const { User } = await import("../models/user.model.js");
+const { Dept } = await import("../models/department.model.js");
 const { ROLES, OTP_PURPOSE } = await import("../config/constants.js");
 const { otpEvents } = await import("../utils/mailer.js");
+const { createUserToken, cleanupTestUsers } = await import("./helpers.js");
 
 let server: Server;
 let baseUrl: string;
 const createdUserIds: string[] = [];
+
+// POST /api/v1/auth/register is Admin-only; these are set up in `before`.
+let adminToken: string;
+let testDeptName: string;
+let testDeptId: mongoose.Types.ObjectId;
+const adminAuth = (): Record<string, string> => ({ Authorization: `Bearer ${adminToken}` });
 
 function serverPort(s: Server): number {
   const address = s.address();
@@ -39,11 +47,21 @@ before(async () => {
   await mongoose.connect(process.env.MONGO_URL as string);
   server = app.listen(0);
   baseUrl = `http://127.0.0.1:${serverPort(server)}`;
+
+  const suffix = crypto.randomBytes(6).toString("hex");
+  const dept = await Dept.create({ name: `Auth Dept ${suffix}`, code: `AUD${suffix.slice(0, 4)}` });
+  testDeptName = dept.name;
+  testDeptId = dept._id;
+  ({ token: adminToken } = await createUserToken({ role: ROLES.ADMIN }));
 });
 
 after(async () => {
+  await cleanupTestUsers();
   if (createdUserIds.length) {
     await User.deleteMany({ _id: { $in: createdUserIds } });
+  }
+  if (testDeptId) {
+    await Dept.deleteOne({ _id: testDeptId });
   }
   await mongoose.disconnect();
   await new Promise<void>((resolve) => server.close(() => resolve()));
@@ -58,6 +76,7 @@ function randomUser(overrides: Record<string, unknown> = {}) {
     email: `test.${id}@labmon.test`,
     password: `Pw_${crypto.randomBytes(8).toString("hex")}`,
     role: ROLES.LAB_INCHARGE,
+    department: testDeptName,
     ...overrides,
   };
 }
@@ -125,7 +144,7 @@ function waitForOtp(email: string, purpose: string): Promise<string> {
 async function registerRandomUser(overrides: Record<string, unknown> = {}) {
   const payload = randomUser(overrides);
   const otpPromise = waitForOtp(payload.email, OTP_PURPOSE.EMAIL_VERIFICATION);
-  const { res, body } = await postJson("/api/v1/auth/register", payload);
+  const { res, body } = await postJson("/api/v1/auth/register", payload, adminAuth());
   if (res.status === 201) {
     createdUserIds.push(body.data._id);
   }
@@ -152,9 +171,41 @@ test("register - creates a new, unverified user and never returns the password",
 test("register - rejects a duplicate email with 409", async () => {
   const { payload } = await registerRandomUser();
 
-  const { res, body } = await postJson("/api/v1/auth/register", payload);
+  const { res, body } = await postJson("/api/v1/auth/register", payload, adminAuth());
 
   assert.equal(res.status, 409);
+  assert.equal(body.success, false);
+});
+
+test("register - rejects an unauthenticated caller with 401", async () => {
+  const { res, body } = await postJson("/api/v1/auth/register", randomUser());
+
+  assert.equal(res.status, 401);
+  assert.equal(body.success, false);
+});
+
+test("register - rejects a non-admin caller with 403", async () => {
+  const { token: hodToken } = await createUserToken({
+    role: ROLES.HOD,
+    department: testDeptId,
+  });
+
+  const { res, body } = await postJson("/api/v1/auth/register", randomUser(), {
+    Authorization: `Bearer ${hodToken}`,
+  });
+
+  assert.equal(res.status, 403);
+  assert.equal(body.success, false);
+});
+
+test("register - rejects an attempt to create an admin (role not allowed)", async () => {
+  const { res, body } = await postJson(
+    "/api/v1/auth/register",
+    randomUser({ role: ROLES.ADMIN }),
+    adminAuth(),
+  );
+
+  assert.equal(res.status, 400);
   assert.equal(body.success, false);
 });
 

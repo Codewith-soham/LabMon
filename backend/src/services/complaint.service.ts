@@ -11,7 +11,7 @@ import "../models/lab.model.js";
 import "../models/department.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { ROLES, COMPLAINT_STATUS, NEXT_LEVEL, TERMINAL_STATUSES } from "../config/constants.js";
-import { assertDepartmentAccess, buildComplaintScope } from "../utils/scope.js";
+import { assertLabAccess, buildComplaintScope } from "../utils/scope.js";
 import type { AuthTokenPayload } from "../types/auth.js";
 
 export interface CreateComplaintInput {
@@ -72,10 +72,11 @@ const escalateComplaint = async (
     throw new ApiError(400, "Cannot escalate a resolved or closed complaint");
   }
 
-  assertDepartmentAccess(
+  assertLabAccess(
     user,
     complaint.department,
-    "You are not authorized to escalate complaints outside your department",
+    complaint.lab,
+    "You are not authorized to escalate this complaint",
   );
 
   if (user.role !== complaint.currentLevel) {
@@ -125,10 +126,11 @@ const resolveComplaint = async (
     throw new ApiError(400, "Complaint is already resolved");
   }
 
-  assertDepartmentAccess(
+  assertLabAccess(
     user,
     complaint.department,
-    "You are not authorized to resolve complaints outside your department",
+    complaint.lab,
+    "You are not authorized to resolve this complaint",
   );
 
   if (user.role !== complaint.currentLevel) {

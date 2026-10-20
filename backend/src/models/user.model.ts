@@ -7,8 +7,17 @@ export interface IUser {
   name: string;
   email: string;
   department: Types.ObjectId | null;
+  // Lab assignment. Only meaningful for `labIncharge` (their one lab); `null`
+  // for `hod`/`admin`. Drives the lab-level access scope (utils/scope.ts).
+  lab: Types.ObjectId | null;
   password: string;
   role: Role;
+  // Deactivated accounts cannot log in and every outstanding token is rejected
+  // by the auth middleware. Admin toggles this; never a self-service field.
+  isActive: boolean;
+  // Bumped on logout / deactivation / role change so already-issued access
+  // tokens stop verifying (the claim no longer matches the stored version).
+  tokenVersion: number;
   refreshToken?: string;
   isEmailVerified: boolean;
   otp?: string;
@@ -52,6 +61,12 @@ const userSchema = new mongoose.Schema<IUser, UserModel, IUserMethods>(
       default: null,
     },
 
+    lab: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Lab",
+      default: null,
+    },
+
     password: {
       type: String,
       required: [true, "Password is required"],
@@ -61,6 +76,17 @@ const userSchema = new mongoose.Schema<IUser, UserModel, IUserMethods>(
       type: String,
       enum: Object.values(ROLES),
       required: true,
+    },
+
+    isActive: {
+      type: Boolean,
+      default: true,
+      index: true,
+    },
+
+    tokenVersion: {
+      type: Number,
+      default: 0,
     },
 
     refreshToken: {

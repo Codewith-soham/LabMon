@@ -23,7 +23,7 @@ const { Lab } = await import("../models/lab.model.js");
 const { Pc } = await import("../models/pc.model.js");
 const { Complaint } = await import("../models/complaint.model.js");
 const { ROLES, COMPLAINT_STATUS } = await import("../config/constants.js");
-const { generateAccessToken } = await import("../utils/tokenGeneration.js");
+const { createUserToken, cleanupTestUsers } = await import("./helpers.js");
 
 type JsonResult = { res: Response; body: any };
 
@@ -44,6 +44,7 @@ before(async () => {
 });
 
 after(async () => {
+  await cleanupTestUsers();
   if (cleanupIds.complaint.length) {
     await Complaint.deleteMany({ _id: { $in: cleanupIds.complaint } });
   }
@@ -65,8 +66,17 @@ function randomSuffix(): string {
   return crypto.randomBytes(5).toString("hex");
 }
 
-function tokenFor({ role, department }: { role: Role; department: Types.ObjectId | null }): string {
-  return generateAccessToken({ _id: new mongoose.Types.ObjectId(), role, department });
+async function tokenFor({
+  role,
+  department,
+  lab,
+}: {
+  role: Role;
+  department: Types.ObjectId | null;
+  lab?: Types.ObjectId | null;
+}): Promise<string> {
+  const { token } = await createUserToken({ role, department, lab });
+  return token;
 }
 
 async function postJson(path: string, payload: unknown, token?: string) {
@@ -192,9 +202,9 @@ test("track complaint - returns 404 for an unknown token", async () => {
 });
 
 test("escalate complaint - labIncharge in the same department moves ownership to hod, status unchanged", async () => {
-  const { pc, dept } = await makePc();
+  const { pc, dept, lab } = await makePc();
   const { body: created } = await raiseComplaint(pc);
-  const token = tokenFor({ role: ROLES.LAB_INCHARGE, department: dept._id });
+  const token = await tokenFor({ role: ROLES.LAB_INCHARGE, department: dept._id, lab: lab._id });
 
   const { res, body } = await patchJson(
     `/api/v1/complaint/${created.data._id}/escalate`,
@@ -221,7 +231,7 @@ test("escalate complaint - rejects a labIncharge from a different department (40
   });
   cleanupIds.dept.push(otherDept._id);
 
-  const token = tokenFor({ role: ROLES.LAB_INCHARGE, department: otherDept._id });
+  const token = await tokenFor({ role: ROLES.LAB_INCHARGE, department: otherDept._id });
   const { res, body } = await patchJson(
     `/api/v1/complaint/${created.data._id}/escalate`,
     {},
@@ -235,7 +245,7 @@ test("escalate complaint - rejects a labIncharge from a different department (40
 test("escalate complaint - rejects a hod trying to escalate a complaint still at labIncharge level (403)", async () => {
   const { pc, dept } = await makePc();
   const { body: created } = await raiseComplaint(pc);
-  const token = tokenFor({ role: ROLES.HOD, department: dept._id });
+  const token = await tokenFor({ role: ROLES.HOD, department: dept._id });
 
   const { res, body } = await patchJson(
     `/api/v1/complaint/${created.data._id}/escalate`,
@@ -249,10 +259,14 @@ test("escalate complaint - rejects a hod trying to escalate a complaint still at
 });
 
 test("escalate complaint - hod cannot escalate further, hod is the top of the chain (400)", async () => {
-  const { pc, dept } = await makePc();
+  const { pc, dept, lab } = await makePc();
   const { body: created } = await raiseComplaint(pc);
-  const inchargeToken = tokenFor({ role: ROLES.LAB_INCHARGE, department: dept._id });
-  const hodToken = tokenFor({ role: ROLES.HOD, department: dept._id });
+  const inchargeToken = await tokenFor({
+    role: ROLES.LAB_INCHARGE,
+    department: dept._id,
+    lab: lab._id,
+  });
+  const hodToken = await tokenFor({ role: ROLES.HOD, department: dept._id });
 
   await patchJson(`/api/v1/complaint/${created.data._id}/escalate`, {}, inchargeToken);
   const { res, body } = await patchJson(
@@ -267,9 +281,9 @@ test("escalate complaint - hod cannot escalate further, hod is the top of the ch
 });
 
 test("resolve complaint - labIncharge resolves a SUBMITTED complaint at their level", async () => {
-  const { pc, dept } = await makePc();
+  const { pc, dept, lab } = await makePc();
   const { body: created } = await raiseComplaint(pc);
-  const token = tokenFor({ role: ROLES.LAB_INCHARGE, department: dept._id });
+  const token = await tokenFor({ role: ROLES.LAB_INCHARGE, department: dept._id, lab: lab._id });
 
   const { res, body } = await patchJson(
     `/api/v1/complaint/${created.data._id}/resolve`,
@@ -285,9 +299,9 @@ test("resolve complaint - labIncharge resolves a SUBMITTED complaint at their le
 });
 
 test("resolve complaint - rejects resolving an already-resolved complaint (400)", async () => {
-  const { pc, dept } = await makePc();
+  const { pc, dept, lab } = await makePc();
   const { body: created } = await raiseComplaint(pc);
-  const token = tokenFor({ role: ROLES.LAB_INCHARGE, department: dept._id });
+  const token = await tokenFor({ role: ROLES.LAB_INCHARGE, department: dept._id, lab: lab._id });
 
   await patchJson(`/api/v1/complaint/${created.data._id}/resolve`, {}, token);
   const { res, body } = await patchJson(`/api/v1/complaint/${created.data._id}/resolve`, {}, token);
@@ -298,12 +312,16 @@ test("resolve complaint - rejects resolving an already-resolved complaint (400)"
 });
 
 test("list complaints - a labIncharge only sees complaints from their own department", async () => {
-  const { pc: ownPc, dept: ownDept } = await makePc();
+  const { pc: ownPc, dept: ownDept, lab: ownLab } = await makePc();
   const { pc: otherPc } = await makePc();
   const { body: ownComplaint } = await raiseComplaint(ownPc);
   await raiseComplaint(otherPc);
 
-  const token = tokenFor({ role: ROLES.LAB_INCHARGE, department: ownDept._id });
+  const token = await tokenFor({
+    role: ROLES.LAB_INCHARGE,
+    department: ownDept._id,
+    lab: ownLab._id,
+  });
   const { res, body } = await getJson("/api/v1/complaint", token);
 
   assert.equal(res.status, 200);
@@ -316,7 +334,7 @@ test("list complaints - hod does not see a complaint still at labIncharge level"
   const { pc, dept } = await makePc();
   const { body: created } = await raiseComplaint(pc);
 
-  const token = tokenFor({ role: ROLES.HOD, department: dept._id });
+  const token = await tokenFor({ role: ROLES.HOD, department: dept._id });
   const { res, body } = await getJson("/api/v1/complaint", token);
 
   assert.equal(res.status, 200);
@@ -324,12 +342,16 @@ test("list complaints - hod does not see a complaint still at labIncharge level"
 });
 
 test("list complaints - hod sees a complaint once it is escalated to them, across their own department only", async () => {
-  const { pc, dept } = await makePc();
+  const { pc, dept, lab } = await makePc();
   const { body: created } = await raiseComplaint(pc);
-  const inchargeToken = tokenFor({ role: ROLES.LAB_INCHARGE, department: dept._id });
+  const inchargeToken = await tokenFor({
+    role: ROLES.LAB_INCHARGE,
+    department: dept._id,
+    lab: lab._id,
+  });
   await patchJson(`/api/v1/complaint/${created.data._id}/escalate`, {}, inchargeToken);
 
-  const hodToken = tokenFor({ role: ROLES.HOD, department: dept._id });
+  const hodToken = await tokenFor({ role: ROLES.HOD, department: dept._id });
   const { res, body } = await getJson("/api/v1/complaint", hodToken);
 
   assert.equal(res.status, 200);
@@ -341,7 +363,7 @@ test("list complaints - admin sees a complaint while it is still at labIncharge 
   const { pc } = await makePc();
   const { body: created } = await raiseComplaint(pc);
 
-  const adminToken = tokenFor({ role: ROLES.ADMIN, department: null });
+  const adminToken = await tokenFor({ role: ROLES.ADMIN, department: null });
   const { res, body } = await getJson("/api/v1/complaint", adminToken);
 
   assert.equal(res.status, 200);
@@ -354,7 +376,7 @@ test("list complaints - admin sees complaints from every department", async () =
   const { body: createdA } = await raiseComplaint(pcA);
   const { body: createdB } = await raiseComplaint(pcB);
 
-  const adminToken = tokenFor({ role: ROLES.ADMIN, department: null });
+  const adminToken = await tokenFor({ role: ROLES.ADMIN, department: null });
   const { res, body } = await getJson("/api/v1/complaint", adminToken);
 
   assert.equal(res.status, 200);
@@ -452,12 +474,16 @@ test("api - raise/escalate/resolve responses only ever expose V1 status and curr
   const statuses = Object.values(COMPLAINT_STATUS) as string[];
   const levels = [ROLES.LAB_INCHARGE, ROLES.HOD] as string[];
 
-  const { pc, dept } = await makePc();
+  const { pc, dept, lab } = await makePc();
   const { body: created } = await raiseComplaint(pc);
   assert.ok(statuses.includes(created.data.status));
   assert.ok(levels.includes(created.data.currentLevel));
 
-  const inchargeToken = tokenFor({ role: ROLES.LAB_INCHARGE, department: dept._id });
+  const inchargeToken = await tokenFor({
+    role: ROLES.LAB_INCHARGE,
+    department: dept._id,
+    lab: lab._id,
+  });
   const { body: escalated } = await patchJson(
     `/api/v1/complaint/${created.data._id}/escalate`,
     {},
@@ -466,7 +492,7 @@ test("api - raise/escalate/resolve responses only ever expose V1 status and curr
   assert.ok(statuses.includes(escalated.data.status));
   assert.equal(escalated.data.currentLevel, ROLES.HOD);
 
-  const hodToken = tokenFor({ role: ROLES.HOD, department: dept._id });
+  const hodToken = await tokenFor({ role: ROLES.HOD, department: dept._id });
   const { body: resolved } = await patchJson(
     `/api/v1/complaint/${created.data._id}/resolve`,
     { remarks: "done" },

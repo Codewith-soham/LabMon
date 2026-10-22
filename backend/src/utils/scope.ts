@@ -34,12 +34,12 @@ const buildLabScope = (user: ScopedUser): MongoFilter => {
   return { department: user.department };
 };
 
-// Throws 403 unless the user may act on a resource in the given department.
-// Admin: always. HOD & Lab Incharge: same department.
+// Throws 403 unless the user may act on a resource in the given department/lab.
+// Admin: always. HOD: same department. Lab Incharge: same department and same lab.
 const assertLabAccess = (
   user: ScopedUser,
   department: unknown,
-  _lab: unknown,
+  lab: unknown,
   message: string,
 ): void => {
   if (isDeptUnscoped(user)) {
@@ -48,10 +48,13 @@ const assertLabAccess = (
   if (String(department) !== String(user.department)) {
     throw new ApiError(403, message);
   }
+  if (isLabScoped(user) && String(lab) !== String(user.lab)) {
+    throw new ApiError(403, message);
+  }
 };
 
 // admin sees everything;
-// hod sees department complaints currently at hod level;
+// hod sees department complaints across all levels;
 // labIncharge sees complaints in their own lab currently at labIncharge level.
 const buildComplaintScope = (user: ScopedUser): MongoFilter => {
   if (user.role === ROLES.ADMIN) {
@@ -59,7 +62,7 @@ const buildComplaintScope = (user: ScopedUser): MongoFilter => {
   }
 
   if (user.role === ROLES.HOD) {
-    return { department: user.department, currentLevel: ROLES.HOD };
+    return { department: user.department };
   }
 
   return { department: user.department, lab: user.lab, currentLevel: ROLES.LAB_INCHARGE };

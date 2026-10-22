@@ -51,13 +51,18 @@ const assertLabAccess = (
 };
 
 // admin sees everything;
-// hod and labIncharge see all complaints across their department.
+// hod sees department complaints currently at hod level;
+// labIncharge sees complaints in their own lab currently at labIncharge level.
 const buildComplaintScope = (user: ScopedUser): MongoFilter => {
   if (user.role === ROLES.ADMIN) {
     return {};
   }
 
-  return { department: user.department };
+  if (user.role === ROLES.HOD) {
+    return { department: user.department, currentLevel: ROLES.HOD };
+  }
+
+  return { department: user.department, lab: user.lab, currentLevel: ROLES.LAB_INCHARGE };
 };
 
 export {

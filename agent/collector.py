@@ -22,7 +22,31 @@ try:
 except ImportError:
     winreg = None
 
-BACKEND_URL = os.environ.get("LABMON_BACKEND_URL", "http://localhost:8000")
+CONFIG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json")
+
+def load_config():
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return {}
+    return {}
+
+def save_config(cfg):
+    try:
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2)
+    except Exception:
+        pass
+
+_saved_config = load_config()
+
+BACKEND_URL = (
+    os.environ.get("LABMON_BACKEND_URL")
+    or _saved_config.get("backend_url")
+    or "http://localhost:8000"
+)
 SYNC_ENDPOINT = f"{BACKEND_URL.rstrip('/')}/api/v1/pc/sync"
 
 UNINSTALL_KEYS = [
@@ -235,7 +259,7 @@ def parse_args(argv=None):
 def main(argv=None):
     args = parse_args(argv)
 
-    dead_stock_no = (args.dead_stock or "").strip()
+    dead_stock_no = (args.dead_stock or _saved_config.get("dead_stock_no") or "").strip()
     if not dead_stock_no and not args.dry_run:
         dead_stock_no = input("Enter Dead Stock Number for this PC: ").strip()
     if not dead_stock_no:
@@ -245,22 +269,30 @@ def main(argv=None):
             print("Dead Stock Number is required.")
             sys.exit(1)
 
+    # Save to config.json so subsequent runs never ask again
+    if not args.dry_run and dead_stock_no != "DRY-RUN":
+        updated_cfg = dict(_saved_config)
+        updated_cfg["dead_stock_no"] = dead_stock_no
+        if "backend_url" not in updated_cfg:
+            updated_cfg["backend_url"] = BACKEND_URL
+        save_config(updated_cfg)
+
     # Only needed the first time this PC is synced — an already-provisioned PC just
-    # refreshes its hardware config if these are left blank.
+    # refreshes its hardware config if department is left blank.
     if args.dry_run:
         department = args.department
         lab = args.lab
     else:
-        department = (
-            args.department
-            if args.department is not None
-            else input("Enter Department name (e.g. Computer Science) [leave blank if already set up]: ").strip()
-        )
-        lab = (
-            args.lab
-            if args.lab is not None
-            else input("Enter Lab name (e.g. Lab 1) [leave blank if already set up]: ").strip()
-        )
+        # If this PC is already known in config, don't ask for department again unless specified via flags
+        if _saved_config.get("dead_stock_no") and args.department is None:
+            department = ""
+        else:
+            department = (
+                args.department
+                if args.department is not None
+                else input("Enter Department name (e.g. Computer Science) [leave blank if already set up]: ").strip()
+            )
+        lab = args.lab or ""
 
     payload = build_payload(dead_stock_no, department, lab)
 

@@ -61,10 +61,6 @@ function PcHealthCardModal({ pc, onClose, onRefresh }: PcHealthCardModalProps) {
           <p className="detail-value">{pc.department?.name || '—'}</p>
         </div>
         <div>
-          <p className="field-label">Lab</p>
-          <p className="detail-value">{pc.lab?.name || '—'}</p>
-        </div>
-        <div>
           <p className="field-label">CPU</p>
           <p className="detail-value">{pc.config?.cpu || '—'}</p>
         </div>

@@ -40,7 +40,7 @@ const createComplaint = async ({
     token: complaintToken,
     pc: pc._id,
     department: pc.department,
-    lab: pc.lab,
+    lab: pc.lab ?? null,
     description,
     raisedBy,
     status: COMPLAINT_STATUS.SUBMITTED,
@@ -133,8 +133,12 @@ const resolveComplaint = async (
     "You are not authorized to resolve this complaint",
   );
 
-  if (user.role !== complaint.currentLevel) {
-    throw new ApiError(403, "Only the current level's incharge can resolve this complaint");
+  if (
+    user.role !== complaint.currentLevel &&
+    user.role !== ROLES.HOD &&
+    user.role !== ROLES.ADMIN
+  ) {
+    throw new ApiError(403, "Only the current level's incharge, HOD, or Admin can resolve this complaint");
   }
 
   complaint.status = COMPLAINT_STATUS.RESOLVED;

@@ -19,7 +19,7 @@ export interface IPcConfig {
 export interface IPc {
   deadStockNo: string;
   department: Types.ObjectId;
-  lab: Types.ObjectId;
+  lab?: Types.ObjectId | null;
   warranty: IPcWarranty;
   purchaseDate?: Date;
   config: IPcConfig;
@@ -47,7 +47,8 @@ const pcSchema = new mongoose.Schema<IPc, PcModel>(
     lab: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Lab",
-      required: true,
+      required: false,
+      default: null,
     },
 
     // embedded document

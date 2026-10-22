@@ -5,7 +5,7 @@ import '../auth/AuthPage.css';
 import Donut from './Donut';
 import ComplaintDetailModal from './ComplaintDetailModal';
 import ResolveComplaintModal from './ResolveComplaintModal';
-import { STATUS_META, IN_PROGRESS_STATUSES, formatDateTime } from './complaintMeta';
+import { STATUS_META, IN_PROGRESS_STATUSES, LEVEL_LABEL, formatDateTime } from './complaintMeta';
 import { logout } from '../../services/authService';
 import { listComplaints, escalateComplaint, resolveComplaint } from '../../services/complaintService';
 import { useAuth } from '../../hooks/useAuth';
@@ -61,9 +61,10 @@ function ComplaintsDashboard({ role, subtitle, defaultName }: ComplaintsDashboar
   const selectedComplaint = complaints.find((c) => c._id === selectedId) || null;
 
   const canAct = (complaint: Complaint) =>
-    complaint.currentLevel === effectiveRole && !RESOLVED_STATUSES.includes(complaint.status);
+    (complaint.currentLevel === effectiveRole || effectiveRole === ROLES.HOD || effectiveRole === ROLES.ADMIN) &&
+    !RESOLVED_STATUSES.includes(complaint.status);
   const canEscalate = (complaint: Complaint) =>
-    canAct(complaint) && Boolean(NEXT_LEVEL[effectiveRole]);
+    complaint.currentLevel === effectiveRole && !RESOLVED_STATUSES.includes(complaint.status) && Boolean(NEXT_LEVEL[effectiveRole]);
   const showDepartmentColumn = effectiveRole === ROLES.ADMIN;
 
   const stats = useMemo(() => {
@@ -155,7 +156,6 @@ function ComplaintsDashboard({ role, subtitle, defaultName }: ComplaintsDashboar
           <span className="dashboard-user-name">{user?.name || defaultName}</span>
           <span className="dashboard-dept-badge">
             {user?.department?.name || 'Department'}
-            {user?.lab?.name ? ` · ${user.lab.name}` : ''}
           </span>
           <button type="button" className="dashboard-logout" onClick={handleLogout}>
             Logout
@@ -251,6 +251,7 @@ function ComplaintsDashboard({ role, subtitle, defaultName }: ComplaintsDashboar
                 <tr>
                   <th>Description</th>
                   {showDepartmentColumn && <th>Department</th>}
+                  <th>Current Level</th>
                   <th>Raised By</th>
                   <th>Date</th>
                   <th>Status</th>
@@ -260,7 +261,7 @@ function ComplaintsDashboard({ role, subtitle, defaultName }: ComplaintsDashboar
               <tbody>
                 {visibleComplaints.length === 0 ? (
                   <tr>
-                    <td colSpan={showDepartmentColumn ? 6 : 5} className="panel-state-text">
+                    <td colSpan={showDepartmentColumn ? 7 : 6} className="panel-state-text">
                       {complaints.length === 0
                         ? 'No complaints yet.'
                         : 'No complaints match your filters.'}
@@ -278,6 +279,11 @@ function ComplaintsDashboard({ role, subtitle, defaultName }: ComplaintsDashboar
                         {showDepartmentColumn && (
                           <td className="cell-muted">{complaint.department?.name}</td>
                         )}
+                        <td>
+                          <span className={`level-pill level-pill--${complaint.currentLevel}`}>
+                            {LEVEL_LABEL[complaint.currentLevel] || complaint.currentLevel}
+                          </span>
+                        </td>
                         <td className="cell-muted">{complaint.raisedBy?.name}</td>
                         <td className="cell-muted">{formatDateTime(complaint.createdAt)}</td>
                         <td>

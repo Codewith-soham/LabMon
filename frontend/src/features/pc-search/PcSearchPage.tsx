@@ -240,7 +240,6 @@ function PcSearchPage() {
                 <tr>
                   <th>Dead Stock No.</th>
                   <th>Department</th>
-                  <th>Lab</th>
                   <th>CPU</th>
                   <th>RAM</th>
                   <th>OS</th>
@@ -250,7 +249,7 @@ function PcSearchPage() {
               <tbody>
                 {results.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="panel-state-text">
+                    <td colSpan={6} className="panel-state-text">
                       No PCs match your search.
                     </td>
                   </tr>
@@ -265,7 +264,6 @@ function PcSearchPage() {
                       <tr key={pc._id} onClick={() => setSelectedPc(pc)}>
                         <td className="cell-description">{pc.deadStockNo}</td>
                         <td className="cell-muted">{pc.department?.name || '—'}</td>
-                        <td className="cell-muted">{pc.lab?.name || '—'}</td>
                         <td className="cell-muted">{pc.config?.cpu || '—'}</td>
                         <td className="cell-muted">{pc.config?.ram || '—'}</td>
                         <td className="cell-muted">{pc.config?.os || '—'}</td>

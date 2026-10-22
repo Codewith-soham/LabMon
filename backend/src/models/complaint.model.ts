@@ -27,7 +27,7 @@ export interface IComplaint {
   token: string;
   pc: Types.ObjectId;
   department: Types.ObjectId;
-  lab: Types.ObjectId;
+  lab?: Types.ObjectId | null;
   description: string;
   raisedBy: IComplaintRaisedBy;
   status: ComplaintStatus;
@@ -63,7 +63,8 @@ const complaintSchema = new mongoose.Schema<IComplaint, ComplaintModel>(
     lab: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Lab",
-      required: true,
+      required: false,
+      default: null,
     },
 
     description: {

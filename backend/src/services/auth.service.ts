@@ -3,6 +3,7 @@ import jwt from "jsonwebtoken";
 import crypto from "node:crypto";
 import { User, type UserDocument } from "../models/user.model.js";
 import { Dept } from "../models/department.model.js";
+import { Lab } from "../models/lab.model.js";
 import { ApiError } from "../utils/ApiError.js";
 import { generateAccessToken, generateRefreshToken } from "../utils/tokenGeneration.js";
 import { generateOtp, hashOtp, compareOtp } from "../utils/otp.js";
@@ -13,6 +14,7 @@ import {
   OTP_MAX_ATTEMPTS,
   OTP_RESEND_COOLDOWN_SECONDS,
   isOtpPurpose,
+  ROLES,
   type OtpPurpose,
   type Role,
 } from "../config/constants.js";
@@ -29,6 +31,8 @@ export interface RegisterInput {
   password: string;
   role: Role;
   department?: string | null;
+  // Lab name (e.g. "Lab 12"), only used when role is labIncharge.
+  lab?: string | null;
 }
 
 export interface VerifyEmailInput {
@@ -81,6 +85,7 @@ const registerUser = async ({
   password,
   role,
   department,
+  lab,
 }: RegisterInput): Promise<UserDocument> => {
   // check if user exists
   const existingUser = await User.findOne({ email });
@@ -102,6 +107,23 @@ const registerUser = async ({
     departmentId = dept._id;
   }
 
+  // lab is likewise submitted as a name and only meaningful for a Lab Incharge;
+  // it must belong to the resolved department.
+  let labId: UserDocument["lab"] = null;
+  if (role === ROLES.LAB_INCHARGE && lab) {
+    if (!departmentId) {
+      throw new ApiError(400, "A lab assignment requires a department");
+    }
+
+    const labDoc = await Lab.findOne({ name: lab.trim(), department: departmentId });
+
+    if (!labDoc) {
+      throw new ApiError(404, `Lab "${lab}" not found in the selected department`);
+    }
+
+    labId = labDoc._id;
+  }
+
   // create user
   const user = await User.create({
     name,
@@ -109,6 +131,7 @@ const registerUser = async ({
     password,
     role,
     department: departmentId,
+    lab: labId,
   });
 
   // send an otp so the user can verify their email
@@ -214,6 +237,10 @@ const loginUser = async ({
     throw new ApiError(401, "Invalid email or password");
   }
 
+  if (!user.isActive) {
+    throw new ApiError(403, "Your account has been deactivated. Contact your administrator.");
+  }
+
   if (!user.isEmailVerified) {
     throw new ApiError(403, "Please verify your email before logging in");
   }
@@ -229,14 +256,22 @@ const loginUser = async ({
   // no returning of password
   user.set("password", undefined);
 
-  await user.populate("department", "name");
+  await user.populate([
+    { path: "department", select: "name" },
+    { path: "lab", select: "name" },
+  ]);
 
   return { user, accessToken, refreshToken };
 };
 
 // used to rehydrate the frontend's session (e.g. on page load) from the accessToken cookie alone
 const getCurrentUser = async (userId: string): Promise<UserDocument> => {
-  const user = await User.findById(userId).populate("department", "name");
+  const user = await User.findById(userId)
+    .select("-password -refreshToken")
+    .populate([
+      { path: "department", select: "name" },
+      { path: "lab", select: "name" },
+    ]);
 
   if (!user) {
     throw new ApiError(401, "Not authenticated");
@@ -293,7 +328,11 @@ const logoutUser = async (userId: string | undefined): Promise<void> => {
     throw new ApiError(401, "Not authenticated");
   }
 
+  // Clearing the refresh token stops rotation; bumping tokenVersion makes every
+  // access token already issued to this user stop verifying (auth middleware
+  // compares the claim against this value).
   user.set("refreshToken", undefined);
+  user.tokenVersion = (user.tokenVersion ?? 0) + 1;
   await user.save({ validateBeforeSave: false });
 };
 

@@ -1,9 +1,9 @@
 // Integration tests for GET /api/v1/pc/search. Runs the real Express app
 // in-process against MONGO_URL from .env. Seeds two departments (each with
 // one lab and a couple of PCs) plus one user per role (labIncharge/hod in
-// dept A, labIncharge in dept B, deanInfra with no department, admin with no
-// department) and logs each in through the real OTP flow, mirroring the
-// pattern in auth.test.js. All seeded data is deleted again in `after`.
+// dept A, labIncharge in dept B, admin with no department) and logs each in
+// through the real OTP flow, mirroring the pattern in auth.test.js. All
+// seeded data is deleted again in `after`.
 
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
@@ -23,8 +23,8 @@ const { User } = await import("../models/user.model.js");
 const { Dept } = await import("../models/department.model.js");
 const { Lab } = await import("../models/lab.model.js");
 const { Pc } = await import("../models/pc.model.js");
-const { ROLES, OTP_PURPOSE } = await import("../config/constants.js");
-const { otpEvents } = await import("../utils/mailer.js");
+const { ROLES } = await import("../config/constants.js");
+const { createUserToken, cleanupTestUsers } = await import("./helpers.js");
 
 let server: Server;
 let baseUrl: string;
@@ -35,7 +35,7 @@ const createdLabIds: Types.ObjectId[] = [];
 const createdPcIds: Types.ObjectId[] = [];
 
 // per-role access tokens, populated in `before`
-const tokens = {} as Record<"labIncharge" | "hod" | "labInchargeB" | "deanInfra" | "admin", string>;
+const tokens = {} as Record<"labIncharge" | "hod" | "labInchargeB" | "admin", string>;
 
 // seeded PCs, populated in `before`
 const pcs = {} as Record<"pcA1" | "pcA2" | "pcB1", PcDocument>;
@@ -101,20 +101,18 @@ before(async () => {
   Object.assign(pcs, { pcA1, pcA2, pcB1 });
 
   // --- users, one per role we need tokens for ---
-  tokens.labIncharge = await registerLoginAndGetToken({
-    role: ROLES.LAB_INCHARGE,
-    department: deptA.name,
-  });
-  tokens.hod = await registerLoginAndGetToken({ role: ROLES.HOD, department: deptA.name });
-  tokens.labInchargeB = await registerLoginAndGetToken({
-    role: ROLES.LAB_INCHARGE,
-    department: deptB.name,
-  });
-  tokens.deanInfra = await registerLoginAndGetToken({ role: ROLES.DEAN_INFRA });
-  tokens.admin = await registerLoginAndGetToken({ role: ROLES.ADMIN });
+  tokens.labIncharge = (
+    await createUserToken({ role: ROLES.LAB_INCHARGE, department: deptA._id, lab: labA._id })
+  ).token;
+  tokens.hod = (await createUserToken({ role: ROLES.HOD, department: deptA._id })).token;
+  tokens.labInchargeB = (
+    await createUserToken({ role: ROLES.LAB_INCHARGE, department: deptB._id, lab: labB._id })
+  ).token;
+  tokens.admin = (await createUserToken({ role: ROLES.ADMIN })).token;
 });
 
 after(async () => {
+  await cleanupTestUsers();
   if (createdPcIds.length) await Pc.deleteMany({ _id: { $in: createdPcIds } });
   if (createdLabIds.length) await Lab.deleteMany({ _id: { $in: createdLabIds } });
   if (createdDeptIds.length) await Dept.deleteMany({ _id: { $in: createdDeptIds } });
@@ -123,82 +121,12 @@ after(async () => {
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 
-function randomUser(overrides: Record<string, unknown> = {}) {
-  const id = crypto.randomBytes(6).toString("hex");
-  return {
-    name: `Test User ${id}`,
-    email: `test.${id}@labmon.test`,
-    password: `Pw_${crypto.randomBytes(8).toString("hex")}`,
-    role: ROLES.LAB_INCHARGE,
-    ...overrides,
-  };
-}
-
-async function postJson(path: string, payload: unknown, extraHeaders: Record<string, string> = {}) {
-  const res = await fetch(`${baseUrl}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...extraHeaders },
-    body: JSON.stringify(payload),
-  });
-  const body: any = await res.json();
-  return { res, body };
-}
-
 async function getJson(path: string, { token }: { token?: string } = {}) {
   const res = await fetch(`${baseUrl}${path}`, {
     headers: token ? { Authorization: `Bearer ${token}` } : {},
   });
   const body: any = await res.json();
   return { res, body };
-}
-
-function extractCookie(setCookieHeaders: string[], name: string): string | undefined {
-  const match = setCookieHeaders.find((c) => c.startsWith(`${name}=`));
-  return match ? match.split(";")[0]?.slice(name.length + 1) : undefined;
-}
-
-function waitForOtp(email: string, purpose: string): Promise<string> {
-  return new Promise((resolve) => {
-    const handler = (payload: OtpEmailEvent) => {
-      if (payload.to === email && payload.purpose === purpose) {
-        otpEvents.off("otp", handler);
-        resolve(payload.otp);
-      }
-    };
-    otpEvents.on("otp", handler);
-  });
-}
-
-// registers, verifies email, logs in, and returns the resulting access token
-// as a plain string (ready for an Authorization header, same as the
-// accessToken cookie used in auth.test.js's logout test)
-async function registerLoginAndGetToken(overrides: Record<string, unknown> = {}): Promise<string> {
-  const payload = randomUser(overrides);
-
-  const emailOtpPromise = waitForOtp(payload.email, OTP_PURPOSE.EMAIL_VERIFICATION);
-  const { res: registerRes, body: registerBody } = await postJson("/api/v1/auth/register", payload);
-  assert.equal(
-    registerRes.status,
-    201,
-    `setup: register failed for ${payload.email}: ${JSON.stringify(registerBody)}`,
-  );
-  createdUserIds.push(registerBody.data._id);
-  const emailOtp = await emailOtpPromise;
-  await postJson("/api/v1/auth/verify-email", { email: payload.email, otp: emailOtp });
-
-  const { res, body } = await postJson("/api/v1/auth/login", {
-    email: payload.email,
-    password: payload.password,
-  });
-  assert.equal(
-    res.status,
-    200,
-    `setup: login failed for ${payload.email}: ${JSON.stringify(body)}`,
-  );
-
-  const token = extractCookie(res.headers.getSetCookie(), "accessToken");
-  assert.ok(token, "setup: expected an accessToken cookie after login");
-  return token;
 }
 
 test("search - rejects a request with no Authorization header (401)", async () => {
@@ -235,15 +163,6 @@ test("search - hod with no filters sees only PCs in their own department", async
   assert.ok(!ids.includes(String(pcs.pcB1._id)));
 });
 
-test("search - deanInfra with no filters sees PCs across all departments", async () => {
-  const { res, body } = await getJson("/api/v1/pc/search", { token: tokens.deanInfra });
-
-  assert.equal(res.status, 200);
-  const ids = body.data.map((pc: any) => pc._id);
-  assert.ok(ids.includes(String(pcs.pcA1._id)));
-  assert.ok(ids.includes(String(pcs.pcB1._id)));
-});
-
 test("search - cpu filter matches partially and case-insensitively, within department scope", async () => {
   const { res, body } = await getJson("/api/v1/pc/search?cpu=intel", { token: tokens.labIncharge });
 
@@ -253,16 +172,16 @@ test("search - cpu filter matches partially and case-insensitively, within depar
   assert.ok(!ids.includes(String(pcs.pcA2._id))); // AMD, filtered out
 });
 
-test("search - software filter matches an element of the software array", async () => {
+test("search - software filter matches an element of the software array, within department scope", async () => {
   const { res, body } = await getJson("/api/v1/pc/search?software=chrome", {
-    token: tokens.deanInfra,
+    token: tokens.labIncharge,
   });
 
   assert.equal(res.status, 200);
   const ids = body.data.map((pc: any) => pc._id);
   assert.ok(ids.includes(String(pcs.pcA1._id)));
-  assert.ok(ids.includes(String(pcs.pcB1._id)));
   assert.ok(!ids.includes(String(pcs.pcA2._id))); // only has Firefox
+  assert.ok(!ids.includes(String(pcs.pcB1._id))); // other department, out of scope
 });
 
 test("search - warrantyStatus filter matches exactly", async () => {

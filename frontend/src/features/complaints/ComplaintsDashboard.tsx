@@ -153,7 +153,10 @@ function ComplaintsDashboard({ role, subtitle, defaultName }: ComplaintsDashboar
         </div>
         <div className="dashboard-header-right">
           <span className="dashboard-user-name">{user?.name || defaultName}</span>
-          <span className="dashboard-dept-badge">{user?.department?.name || 'Department'}</span>
+          <span className="dashboard-dept-badge">
+            {user?.department?.name || 'Department'}
+            {user?.lab?.name ? ` · ${user.lab.name}` : ''}
+          </span>
           <button type="button" className="dashboard-logout" onClick={handleLogout}>
             Logout
           </button>

@@ -5,6 +5,128 @@ One entry per working session / phase. Newest first. (PRD §26 Rule 10, §27.)
 
 ---
 
+## 2026-09-09 — Phase 2 (cont.): execute + verify the data migration
+
+**Owner:** Claude (branch `person-1`)
+**Type:** migration — data only. No business-logic changes. No Phase 3/4 work.
+
+### What ran
+- `MONGO_URL` in `backend/.env` points at a **shared Atlas cluster**
+  (`cluster0.k5lgkyi.mongodb.net`) — not touched. No local mongod/docker/mongosh
+  available, so a private throwaway MongoDB was stood up with
+  `mongodb-memory-server` (v10, installed only in the scratchpad — **no change to
+  `backend/package.json`**), seeded with representative legacy + already-correct +
+  unrelated data, and the migration run against that.
+- `npm run migrate:roles-statuses -- --dry-run` → `npm run migrate:roles-statuses`
+  → dry-run again (idempotency) → second apply (idempotency). Full before/after
+  collection snapshots diffed field-by-field.
+
+### Migration script fixes (`backend/src/scripts/migrateRolesAndStatuses.ts`)
+- **Bug:** `dotenv.config()` ran *after* the model imports, which transitively
+  evaluate `src/config/env.ts` (validates `JWT_*` at import time) — the script
+  crashed before connecting unless the shell already exported every var. Fixed by
+  switching to `import "dotenv/config";` as the first import, matching `server.ts`.
+- Added a consolidated end-of-run SUMMARY block (Users migrated / Complaints
+  migrated / Current levels migrated / Already-correct records / Errors), an
+  `errors` counter with try/catch around the steps, and a WARNING line for values
+  that are neither legacy-mapped nor valid V1. Mapping and write behaviour
+  unchanged. `prettier --check`, `typecheck`, `build` all green.
+
+### Results (against the safe copy: 5 users, 6 complaints, 1 dept, 1 lab)
+- Users migrated: 2 (`deanInfra` → `admin`). Complaints migrated: 4 legacy
+  statuses → `SUBMITTED`/`RESOLVED`. Current levels migrated: 1 (`deanInfra` →
+  `hod`). History arrays rewritten: 2 (`history[].level` `deanInfra` → `hod`).
+  Errors: 0.
+- Post-migration: 0 `deanInfra` roles, 0 legacy statuses, 0 legacy `currentLevel`,
+  0 legacy `history.level`. Second dry-run + second apply: 0 changes (idempotent).
+- Integrity: field-level before/after diff shows **only** `role` / `status` /
+  `currentLevel` / `history[].level` changed. No docs added/deleted, `createdAt` /
+  `updatedAt` / `history` `by`/`at`/`note`/`action` / depts / labs all untouched.
+- Backend: `typecheck` ✅ · `prettier --check` ✅ · `build` ✅ · `npm test` ✅ 59/59
+  (run against a separate MMS db, not Atlas).
+- Live smoke: backend booted against the migrated db; admin / hod / labIncharge
+  all log in with the correct role claim; a migrated ex-`deanInfra` user now
+  authenticates as `admin`; `GET /complaint` returns only V1 `status`
+  (`SUBMITTED`/`RESOLVED`) and `currentLevel` (`labIncharge`/`hod`) values — every
+  one has a `frontend/.../complaintMeta.ts` `STATUS_META` / `LEVEL_LABEL` entry, so
+  no meta mismatch; unauthenticated `GET /complaint` → 401.
+
+### Still open (unchanged, Phase 3+)
+- The migration has **not** been run against the shared Atlas database — that
+  requires a maintainer with a safe target (backup/restore copy or a maintenance
+  window) to run `npm run migrate:roles-statuses -- --dry-run` then without the
+  flag, against that copy.
+- Seeds: no `seedAdmin.ts` yet (Phase 3). Current seeds (`seed.ts`,
+  `seedDepartments.ts`) create no `User` docs, so none can create `deanInfra`.
+
+---
+
+## 2026-09-09 — Phase 2: Backend role/status/currentLevel migration
+
+**Owner:** Claude (branch `person-1`)
+**Type:** migration + test — **backend only.** Scope limited to making the backend
+domain model match the Phase 1 frontend contract. No Phase 3/4 work (no `isActive`,
+no lab scope, no `seedAdmin`/`seedLabs`, no no-PC complaints, no new endpoints).
+
+### Role migration (`legacy → new`)
+- `deanInfra` → `admin` (removed `ROLES.DEAN_INFRA`; `admin` takes the top-authority slot).
+- `admin`, `hod`, `labIncharge` unchanged. `ROLES` is now exactly the 3 PRD roles and
+  matches `frontend/src/constants/roles.ts` verbatim.
+
+### Status migration (`legacy → new`)
+- `Open` → `SUBMITTED` · `Escalated_HOD` → `SUBMITTED` · `Escalated_Dean` → `SUBMITTED`
+  · `Resolved` → `RESOLVED`. Full new enum: `SUBMITTED/ASSIGNED/IN_PROGRESS/RESOLVED/CLOSED`.
+- **Escalation is now decoupled from status** (locked D3): escalating changes the owner
+  level and appends history; it no longer mutates `status`. `STATUS_FOR_LEVEL` deleted.
+
+### currentLevel migration (`legacy → new`)
+- `deanInfra` → `hod`. Valid values are now `labIncharge | hod` (derived from `ROLES`).
+- `NEXT_LEVEL` reduced to `labIncharge → hod`; `hod` is the escalation ceiling
+  (escalating past it → `400 "Complaint is already at the highest escalation level"`).
+
+### Done (files changed)
+- `backend/src/config/constants.ts` — `ROLES` (drop `DEAN_INFRA`); `COMPLAINT_STATUS`
+  → 5-state lifecycle; `NEXT_LEVEL` → `{ labIncharge: hod }`; added `TERMINAL_STATUSES`
+  (`RESOLVED`,`CLOSED`); removed `STATUS_FOR_LEVEL`.
+- `backend/src/models/complaint.model.ts` — `status` default `SUBMITTED`; enums track
+  the constants automatically.
+- `backend/src/services/complaint.service.ts` — create → `SUBMITTED`; escalate no longer
+  sets status; escalate/resolve guards use `TERMINAL_STATUSES` (reject `RESOLVED` **and**
+  `CLOSED`).
+- `backend/src/utils/scope.ts` — `isDeptUnscoped` = admin only; `buildComplaintScope`
+  drops the `deanInfra` branch (admin `{}`, hod `{department, currentLevel: hod}`,
+  labIncharge `{department}`).
+- `backend/src/routes/complaint.route.ts` — `resolve` roleCheck drops `DEAN_INFRA`.
+- `backend/src/routes/pc.route.ts` — `search` / `health-card` roleChecks drop `DEAN_INFRA`.
+- `backend/src/types/auth.ts` — comment.
+- `backend/src/tests/complaint.test.ts`, `pc.search.test.ts`, `healthcard.test.ts` —
+  updated assertions to the new model; removed `deanInfra`/`Escalated_*` cases; added
+  model-level negative tests (role/status/currentLevel enum rejection) + an API-value
+  assertion test.
+- `backend/src/scripts/migrateRolesAndStatuses.ts` — **new**, idempotent, `--dry-run`
+  supported; `npm run migrate:roles-statuses`. Maps the values above.
+
+### Database migration
+- Script **created, NOT executed.** `MONGO_URL` points at a shared Atlas cluster; per
+  PRD (no destructive ops against a shared/production DB) it was not run in this
+  environment. Run `npm run migrate:roles-statuses -- --dry-run` against a backup copy
+  first, then without the flag to apply.
+
+### Legacy references
+- No active backend references to `deanInfra` / legacy statuses remain. Remaining
+  mentions are intentional: the migration script's mapping, and negative tests that
+  assert the schema now rejects those values.
+
+### Testing
+- Backend: `npm run typecheck` ✅ · Prettier `--check` ✅ · `npm run build` ✅ ·
+  `npm test` ✅ **59/59** (was 57; +4 new, −2 removed deanInfra cases).
+- Frontend: not touched this phase.
+
+### Next
+- Phase 3 — Auth + RBAC (`isActive`, `tokenVersion`, lab scope, admin route protection).
+
+---
+
 ## 2026-09-09 — Phase 1: Foundation
 
 **Owner:** Claude

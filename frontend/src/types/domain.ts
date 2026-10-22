@@ -32,6 +32,9 @@ export interface AuthUser {
   email: string;
   role: UserRole;
   department: DepartmentRef | null;
+  /** Set for a Lab Incharge (their assigned lab); null for HOD / Admin. */
+  lab: LabRef | null;
+  isActive: boolean;
   isEmailVerified: boolean;
   createdAt: string;
   updatedAt: string;

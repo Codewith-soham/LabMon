@@ -23,6 +23,12 @@ const envSchema = z.object({
   JWT_REFRESH_TOKEN: z.string().min(1, "JWT_REFRESH_TOKEN is required"),
   JWT_REFRESH_EXPIRY: z.string().min(1, "JWT_REFRESH_EXPIRY is required"),
 
+  // Consumed only by `npm run seed:admin` (src/scripts/seedAdmin.ts) to
+  // provision the initial admin account. Not required to boot the server.
+  ADMIN_EMAIL: z.string().email().optional(),
+  ADMIN_PASSWORD: z.string().min(8).optional(),
+  ADMIN_NAME: z.string().min(1).optional(),
+
   SMTP_HOST: z.string().optional(),
   SMTP_PORT: z.coerce.number().int().positive().optional(),
   SMTP_SECURE: booleanish.optional(),

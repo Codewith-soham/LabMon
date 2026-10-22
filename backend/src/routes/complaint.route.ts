@@ -27,7 +27,7 @@ router.patch(
 router.patch(
   "/:id/resolve",
   auth,
-  roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD, ROLES.DEAN_INFRA),
+  roleCheck(ROLES.LAB_INCHARGE, ROLES.HOD),
   validate(objectIdParamSchema, "params"),
   validate(resolveComplaintSchema),
   resolveComplaint,

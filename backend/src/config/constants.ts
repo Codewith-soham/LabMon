@@ -5,34 +5,37 @@ import { env } from "./env.js";
 
 export const ROLES = {
   ADMIN: "admin",
-  LAB_INCHARGE: "labIncharge",
   HOD: "hod",
-  DEAN_INFRA: "deanInfra",
+  LAB_INCHARGE: "labIncharge",
 } as const;
 
 export type Role = (typeof ROLES)[keyof typeof ROLES];
 
-// Admin is never a complaint escalation level - only these three sit in the chain.
+// Admin is never a complaint escalation level - only hod/labIncharge sit in the chain.
 export type ComplaintLevel = Exclude<Role, typeof ROLES.ADMIN>;
 
+// Complaint lifecycle (PRD §11). `status` is independent of escalation: escalating
+// a complaint changes its owner level, not its status.
 export const COMPLAINT_STATUS = {
-  OPEN: "Open",
-  ESCALATED_HOD: "Escalated_HOD",
-  ESCALATED_DEAN: "Escalated_Dean",
-  RESOLVED: "Resolved",
+  SUBMITTED: "SUBMITTED",
+  ASSIGNED: "ASSIGNED",
+  IN_PROGRESS: "IN_PROGRESS",
+  RESOLVED: "RESOLVED",
+  CLOSED: "CLOSED",
 } as const;
 
 export type ComplaintStatus = (typeof COMPLAINT_STATUS)[keyof typeof COMPLAINT_STATUS];
 
-// lookup table
+// Statuses a complaint can no longer be escalated or resolved from.
+export const TERMINAL_STATUSES: ReadonlyArray<ComplaintStatus> = [
+  COMPLAINT_STATUS.RESOLVED,
+  COMPLAINT_STATUS.CLOSED,
+];
+
+// Escalation chain: Lab Incharge -> HOD. HOD is the ceiling - Admin monitors the
+// system but does not sit in the escalation chain, so there is no entry past hod.
 export const NEXT_LEVEL: Partial<Record<Role, ComplaintLevel>> = {
   [ROLES.LAB_INCHARGE]: ROLES.HOD,
-  [ROLES.HOD]: ROLES.DEAN_INFRA,
-};
-
-export const STATUS_FOR_LEVEL: Partial<Record<Role, ComplaintStatus>> = {
-  [ROLES.HOD]: COMPLAINT_STATUS.ESCALATED_HOD,
-  [ROLES.DEAN_INFRA]: COMPLAINT_STATUS.ESCALATED_DEAN,
 };
 
 export const OTP_PURPOSE = {

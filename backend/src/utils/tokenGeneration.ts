@@ -9,6 +9,7 @@ interface AccessTokenSubject {
   _id: Types.ObjectId | string;
   role: Role;
   department?: Types.ObjectId | string | null;
+  tokenVersion?: number;
 }
 
 interface RefreshTokenSubject {
@@ -29,6 +30,7 @@ const generateAccessToken = (user: AccessTokenSubject): string => {
       id: user._id,
       role: user.role,
       department: user.department ?? null,
+      tokenVersion: user.tokenVersion ?? 0,
     },
     env.JWT_ACCESS_TOKEN,
     {

@@ -82,17 +82,14 @@ const syncPcConfig = async (payload: SyncPcConfigInput): Promise<PcDocument | nu
   }
 
   // No PC with this dead stock number yet — this is first-time provisioning, which
-  // requires a department (and lab) to create the record; without one, preserve the
+  // requires a department to create the record; without one, preserve the
   // original "unknown PC" behavior instead of silently creating an orphaned record.
   if (!department) {
     throw new ApiError(404, "PC not found. Check dead stock number.");
   }
-  if (!lab) {
-    throw new ApiError(400, "lab is required when provisioning a new PC");
-  }
 
   const departmentId = await resolveDepartmentId(department);
-  const labId = await resolveOrCreateLabId(lab, departmentId);
+  const labId = lab ? await resolveOrCreateLabId(lab, departmentId) : null;
 
   // configSet keys are prefixed ("config.cpu", ...); strip the prefix back off for
   // the nested `config` subdocument on a fresh create.

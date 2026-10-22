@@ -330,7 +330,7 @@ test("list complaints - a labIncharge only sees complaints from their own depart
   assert.ok(body.data.some((c: any) => c._id === ownComplaint.data._id));
 });
 
-test("list complaints - hod does not see a complaint still at labIncharge level", async () => {
+test("list complaints - hod sees a complaint in their department even while it is still at labIncharge level", async () => {
   const { pc, dept } = await makePc();
   const { body: created } = await raiseComplaint(pc);
 
@@ -338,7 +338,7 @@ test("list complaints - hod does not see a complaint still at labIncharge level"
   const { res, body } = await getJson("/api/v1/complaint", token);
 
   assert.equal(res.status, 200);
-  assert.ok(body.data.every((c: any) => c._id !== created.data._id));
+  assert.ok(body.data.some((c: any) => c._id === created.data._id));
 });
 
 test("list complaints - hod sees a complaint once it is escalated to them, across their own department only", async () => {

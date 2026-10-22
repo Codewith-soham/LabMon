@@ -135,8 +135,7 @@ function RaiseComplaintPage() {
             {checkingPc && <p className="form-message">Checking PC…</p>}
             {pcInfo && (
               <div className="pc-confirm-box">
-                ✓ PC found — Department: <strong>{pcInfo.department?.name || 'Unknown'}</strong> · Lab:{' '}
-                <strong>{pcInfo.lab?.name || 'Unknown'}</strong>
+                ✓ PC found — Department: <strong>{pcInfo.department?.name || 'Unknown'}</strong>
               </div>
             )}
             {pcCheckError && <p className="form-message form-message-error">{pcCheckError}</p>}

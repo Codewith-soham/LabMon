@@ -60,7 +60,7 @@ export interface Complaint {
   token: string;
   pc: EntityId;
   department: DepartmentRef;
-  lab: LabRef;
+  lab?: LabRef | null;
   description: string;
   raisedBy: RaisedBy;
   status: ComplaintStatus;
@@ -101,7 +101,7 @@ export interface Pc {
   _id: EntityId;
   deadStockNo: string;
   department: DepartmentRef;
-  lab: LabRef;
+  lab?: LabRef | null;
   warranty: Warranty;
   purchaseDate?: string;
   config: PcConfig;
@@ -114,5 +114,5 @@ export interface PcLookup {
   _id: EntityId;
   deadStockNo: string;
   department: DepartmentRef;
-  lab: LabRef;
+  lab?: LabRef | null;
 }

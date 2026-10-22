@@ -17,6 +17,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().int().positive().default(8000),
   MONGO_URL: z.string().min(1, "MONGO_URL is required"),
   CORS_ORIGIN: z.string().min(1).default("http://localhost:5173"),
+  FRONTEND_URL: z.string().url().default("http://localhost:5173"),
 
   JWT_ACCESS_TOKEN: z.string().min(1, "JWT_ACCESS_TOKEN is required"),
   JWT_ACCESS_EXPIRY: z.string().min(1, "JWT_ACCESS_EXPIRY is required"),

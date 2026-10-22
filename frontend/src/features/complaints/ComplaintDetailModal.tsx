@@ -45,10 +45,6 @@ function ComplaintDetailModal({
           <p className="detail-value">{formatDateTime(complaint.createdAt)}</p>
         </div>
         <div>
-          <p className="field-label">Lab</p>
-          <p className="detail-value">{complaint.lab?.name}</p>
-        </div>
-        <div>
           <p className="field-label">Department</p>
           <p className="detail-value">{complaint.department?.name}</p>
         </div>

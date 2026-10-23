@@ -64,6 +64,7 @@ after(async () => {
     await Dept.deleteOne({ _id: testDeptId });
   }
   await mongoose.disconnect();
+  (server as any)?.closeAllConnections?.();
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 

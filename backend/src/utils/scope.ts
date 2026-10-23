@@ -26,20 +26,25 @@ const assertDepartmentAccess = (user: ScopedUser, department: unknown, message: 
   }
 };
 
-// Resource-level scope: admin sees everything, HOD and Lab Incharge are limited to their department.
+// Resource-level scope: admin sees everything, HOD is limited to their
+// department, a Lab Incharge with an assigned lab is limited to their lab within it.
+// If a Lab Incharge has no assigned lab (null), their scope spans their department.
 const buildLabScope = (user: ScopedUser): MongoFilter => {
   if (isDeptUnscoped(user)) {
     return {};
   }
+  if (isLabScoped(user) && user.lab) {
+    return { department: user.department, lab: user.lab };
+  }
   return { department: user.department };
 };
 
-// Throws 403 unless the user may act on a resource in the given department.
-// Admin: always. HOD & Lab Incharge: same department.
+// Throws 403 unless the user may act on a resource in the given department/lab.
+// Admin: always. HOD: same department. Lab Incharge: same department (and same lab if lab is assigned).
 const assertLabAccess = (
   user: ScopedUser,
   department: unknown,
-  _lab: unknown,
+  lab: unknown,
   message: string,
 ): void => {
   if (isDeptUnscoped(user)) {
@@ -48,15 +53,27 @@ const assertLabAccess = (
   if (String(department) !== String(user.department)) {
     throw new ApiError(403, message);
   }
+  if (isLabScoped(user) && user.lab && String(lab) !== String(user.lab)) {
+    throw new ApiError(403, message);
+  }
 };
 
 // admin sees everything;
-// hod and labIncharge see all complaints across their department.
+// hod sees all complaints across all labs within their department;
+// labIncharge: if user has an assigned lab, scopes to that lab; if user.lab is null/undefined (department staff), scopes to their department.
 const buildComplaintScope = (user: ScopedUser): MongoFilter => {
   if (user.role === ROLES.ADMIN) {
     return {};
   }
 
+  if (user.role === ROLES.HOD) {
+    return { department: user.department };
+  }
+
+  // labIncharge
+  if (user.lab) {
+    return { department: user.department, lab: user.lab };
+  }
   return { department: user.department };
 };
 

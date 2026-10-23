@@ -228,6 +228,13 @@ export const StaffManagementPage: React.FC<StaffManagementPageProps> = ({
                 Complaints Dashboard
               </button>
             )}
+            <button
+              type="button"
+              className="staff-tab-btn"
+              onClick={() => navigate(ROUTES.LABORATORIES)}
+            >
+              All PCs
+            </button>
           </div>
           <button
             type="button"

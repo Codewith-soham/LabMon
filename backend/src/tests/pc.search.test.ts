@@ -137,11 +137,15 @@ test("search - rejects a request with no Authorization header (401)", async () =
   assert.equal(body.success, false);
 });
 
-test("search - rejects a role not permitted to search (admin, 403)", async () => {
+test("search - admin with no filters sees PCs from every department", async () => {
   const { res, body } = await getJson("/api/v1/pc/search", { token: tokens.admin });
 
-  assert.equal(res.status, 403);
-  assert.equal(body.success, false);
+  assert.equal(res.status, 200);
+  assert.equal(body.success, true);
+  const ids = body.data.map((pc: any) => pc._id);
+  assert.ok(ids.includes(String(pcs.pcA1._id)));
+  assert.ok(ids.includes(String(pcs.pcA2._id)));
+  assert.ok(ids.includes(String(pcs.pcB1._id)));
 });
 
 test("search - labIncharge with no filters sees only PCs in their own department", async () => {

@@ -39,8 +39,8 @@ const getTransporter = (): Transporter | null => {
     return transporter;
   }
 
-  if (!env.SMTP_HOST) {
-    // SMTP not configured (local dev/test) - fall back to logging
+  if (!env.SMTP_HOST || env.NODE_ENV === "test") {
+    // SMTP not configured or running in test environment - fall back to logging and events
     transporter = null;
     return transporter;
   }

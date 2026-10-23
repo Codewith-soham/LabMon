@@ -259,40 +259,36 @@ def parse_args(argv=None):
 def main(argv=None):
     args = parse_args(argv)
 
-    dead_stock_no = (args.dead_stock or _saved_config.get("dead_stock_no") or "").strip()
-    if not dead_stock_no and not args.dry_run:
-        dead_stock_no = input("Enter Dead Stock Number for this PC: ").strip()
-    if not dead_stock_no:
-        if args.dry_run:
-            dead_stock_no = "DRY-RUN"
-        else:
-            print("Dead Stock Number is required.")
-            sys.exit(1)
-
-    # Save to config.json so subsequent runs never ask again
-    if not args.dry_run and dead_stock_no != "DRY-RUN":
-        updated_cfg = dict(_saved_config)
-        updated_cfg["dead_stock_no"] = dead_stock_no
-        if "backend_url" not in updated_cfg:
-            updated_cfg["backend_url"] = BACKEND_URL
-        save_config(updated_cfg)
-
-    # Only needed the first time this PC is synced — an already-provisioned PC just
-    # refreshes its hardware config if department is left blank.
+    # Identity is asked on EVERY run (never read from config.json), so a config
+    # copied or committed from another PC can't silently reuse its dead stock number.
+    # Flags skip the matching prompt; --dry-run never prompts.
     if args.dry_run:
+        dead_stock_no = (args.dead_stock or "").strip() or "DRY-RUN"
         department = args.department
         lab = args.lab
     else:
-        # If this PC is already known in config, don't ask for department again unless specified via flags
-        if _saved_config.get("dead_stock_no") and args.department is None:
-            department = ""
-        else:
-            department = (
-                args.department
-                if args.department is not None
-                else input("Enter Department name (e.g. Computer Science) [leave blank if already set up]: ").strip()
-            )
-        lab = args.lab or ""
+        dead_stock_no = (
+            args.dead_stock.strip()
+            if args.dead_stock
+            else input("Enter Dead Stock Number for this PC: ").strip()
+        )
+        if not dead_stock_no:
+            print("Dead Stock Number is required.")
+            sys.exit(1)
+        department = (
+            args.department
+            if args.department is not None
+            else input("Enter Department name (e.g. Computer Science): ").strip()
+        )
+        lab = (
+            args.lab
+            if args.lab is not None
+            else input("Enter Lab name (e.g. Lab 9): ").strip()
+        )
+
+    # Only the backend URL is persisted; per-PC identity is not.
+    if not args.dry_run and "backend_url" not in _saved_config:
+        save_config({**_saved_config, "backend_url": BACKEND_URL})
 
     payload = build_payload(dead_stock_no, department, lab)
 

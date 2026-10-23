@@ -118,6 +118,7 @@ after(async () => {
   if (createdDeptIds.length) await Dept.deleteMany({ _id: { $in: createdDeptIds } });
   if (createdUserIds.length) await User.deleteMany({ _id: { $in: createdUserIds } });
   await mongoose.disconnect();
+  (server as any)?.closeAllConnections?.();
   await new Promise<void>((resolve) => server.close(() => resolve()));
 });
 

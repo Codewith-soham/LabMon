@@ -24,9 +24,6 @@ if (!hadMongoUrl) {
   // Override whatever backend/.env just set - we want the throwaway server.
   process.env.MONGO_URL = mongod.getUri();
 
-  // mongodb-memory-server registers its own process cleanup; we only add a
-  // best-effort stop on Ctrl-C. `stop()` is async, so it is never attached to
-  // the synchronous `exit` event (a rejected promise there fails the run).
   const stop = (): void => {
     mongod.stop().catch(() => {});
   };
